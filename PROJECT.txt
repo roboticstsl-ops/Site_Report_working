@@ -1,0 +1,135 @@
+================================================================================
+  DBot Site Visit Assessment — Project Description
+================================================================================
+
+OVERVIEW
+--------
+A web application that allows field assessors to fill out DBot site visit
+assessment reports on any device (laptop or phone) and export them as
+professionally formatted PDF files. The app runs as a Flask server on a local
+machine and is accessible from any network via a Cloudflare tunnel.
+
+
+PURPOSE
+-------
+Before deploying DBot robots into a building, an assessor must visit the site
+and evaluate it across several criteria: elevator compatibility, connectivity,
+docking locations, power availability, and required site changes. Previously
+this was done manually on a Word/DOCX template. This app digitizes that
+workflow — the assessor fills a web form, uploads photos, and downloads a
+ready-to-send PDF report in seconds.
+
+
+TECH STACK
+----------
+  Backend  : Python 3, Flask
+  DOCX     : python-docx (fills a Word template with form data)
+  PDF      : LibreOffice headless (converts DOCX to PDF)
+             PyMuPDF / fitz (post-processes PDF to restore full image quality)
+  Frontend : Plain HTML + CSS + JavaScript (no framework)
+  PWA      : Web App Manifest + Service Worker (installable on iPhone/Android)
+  Tunnel   : Cloudflare cloudflared (exposes local server to public internet)
+
+
+PROJECT STRUCTURE
+-----------------
+  /home/ali/Report_Site/
+  ├── app.py                        Main Flask application
+  ├── SiteReportTemplate (1).docx   Word template with <<placeholder>> markers
+  ├── templates/
+  │   ├── index.html                Main form UI (responsive, PWA-enabled)
+  │   └── report.html               (Legacy HTML template, no longer used)
+  ├── static/
+  │   ├── manifest.json             PWA manifest
+  │   ├── sw.js                     Service worker
+  │   ├── icon-192.png              App icon (192×192)
+  │   └── icon-512.png              App icon (512×512)
+  └── PROJECT.txt                   This file
+
+
+HOW IT WORKS
+------------
+1. The assessor opens the web app (local IP or Cloudflare public URL).
+2. They fill in the report header (area, date, assessor name, contact).
+3. For each tower/building they add a tower tab and fill in:
+     - Checklist (6 items: elevator selection, connectivity, compatibility,
+       docking, power, access) with Yes/No/Pending/N/A status and notes
+     - Docking info (elevator type, notes)
+     - Elevator specifications (door width, cabin depth, provider, comments)
+     - Site changes required (unlimited rows, free text)
+     - Site images (up to 4 photos with captions per tower)
+4. They click "Generate PDF".
+5. The server fills the DOCX template with the form data, converts it to PDF
+   via LibreOffice, then uses PyMuPDF to replace LibreOffice's compressed
+   images with the original full-resolution uploads.
+6. The browser downloads the finished PDF.
+
+
+KEY FEATURES
+------------
+  Multi-tower support    : Add, delete, or duplicate tower tabs dynamically.
+                           Tower numbering always increments from the highest
+                           existing number (no gaps when deleting).
+
+  Dynamic change rows    : Site changes table rows can be added or deleted.
+                           Rows are renumbered automatically.
+
+  Image quality          : LibreOffice heavily compresses images during PDF
+                           conversion. After conversion, PyMuPDF replaces each
+                           downsampled image in the PDF with the original
+                           uploaded bytes (JPEG at quality 95 for non-JPEG
+                           sources), preserving full resolution.
+
+  Responsive UI          : The interface adapts to both desktop and mobile.
+                           On mobile: tables convert to stacked card layouts,
+                           grids collapse to 1-2 columns, inputs use 16px font
+                           to prevent iOS auto-zoom, tower tabs scroll
+                           horizontally, touch targets are ≥44px.
+
+  PWA / Home screen app  : On iPhone, open in Safari → Share → Add to Home
+                           Screen. The app launches full-screen without browser
+                           chrome, like a native app. Works on Android too.
+
+  Public access          : Cloudflare cloudflared tunnel exposes the local
+                           Flask server to the internet with a public HTTPS URL,
+                           accessible from any network without port forwarding.
+                           Binary lives at: /home/ali/cloudflared
+                           Start command:
+                             /home/ali/cloudflared tunnel --url http://127.0.0.1:5000
+
+
+DOCX TEMPLATE MECHANICS
+------------------------
+The Word template contains <<Placeholder>> markers (e.g. <<Area>>, <<Tower>>,
+<<ElevatorDoorWidth>>). The backend reads the template, merges any split XML
+runs that Word has broken across multiple <w:r> elements, then does string
+replacement. For multi-tower reports, the tower heading paragraph and
+assessment table are deep-copied from the original (before any replacement)
+and appended with page breaks for each additional tower.
+
+Image slots in the template are identified by paragraphs containing the text
+"[ Image Placeholder ]". These paragraphs are replaced with the uploaded image
+embedded at exactly 2.60 × 2.60 inches using python-docx.
+
+Captions use a special one-by-one replacement function because all four caption
+placeholders share the same name (<<Image1Caption>>), so they are replaced
+sequentially in document order rather than all at once.
+
+
+RUNNING THE APP
+---------------
+  # Start Flask (listens on all interfaces, port 5000)
+  python3 /home/ali/Report_Site/app.py
+
+  # Start Cloudflare tunnel (in a separate terminal)
+  /home/ali/cloudflared tunnel --url http://127.0.0.1:5000
+
+  Local access  : http://192.168.1.82:5000  (same Wi-Fi network only)
+  Public access : https://<random>.trycloudflare.com  (see tunnel output)
+
+  Note: The public Cloudflare URL is temporary and changes on each tunnel
+  restart. For a permanent URL, create a free Cloudflare account and set up
+  a named tunnel.
+
+
+================================================================================

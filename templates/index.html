@@ -1,0 +1,1742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>DBot Site Assessment</title>
+
+<!-- PWA -->
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DBot">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<style>
+  /* ── Reset & base ─────────────────────────────────────────────────────── */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; color: #222; -webkit-text-size-adjust: 100%; }
+
+  /* ── App header ───────────────────────────────────────────────────────── */
+  .app-header {
+    background: #1a1a2e; color: white;
+    padding: 14px 16px;
+    display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    position: sticky; top: 0; z-index: 100;
+    padding-top: calc(14px + env(safe-area-inset-top));
+  }
+  .app-header h1 { font-size: 1.1rem; font-weight: 600; }
+  .app-header .logo {
+    width: 36px; height: 36px; min-width: 36px; background: #e94560;
+    border-radius: 8px; display: flex; align-items: center;
+    justify-content: center; font-weight: 800; font-size: 1rem;
+  }
+
+  /* ── Layout container ─────────────────────────────────────────────────── */
+  .container {
+    max-width: 960px; margin: 0 auto;
+    padding: 16px 12px calc(80px + env(safe-area-inset-bottom));
+  }
+
+  /* ── Cards ────────────────────────────────────────────────────────────── */
+  .card {
+    background: white; border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    margin-bottom: 20px; overflow: hidden;
+  }
+  .card-header {
+    background: #1a1a2e; color: white;
+    padding: 12px 16px;
+    font-size: 0.95rem; font-weight: 600;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 8px;
+  }
+  .card-header .tower-label { font-size: 0.8rem; opacity: 0.7; }
+  .card-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .card-body { padding: 16px; }
+
+  /* ── Form grids ───────────────────────────────────────────────────────── */
+  /* Mobile: all grids default to 1 column */
+  .form-grid       { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  .form-grid.two   { grid-template-columns: 1fr 1fr; }
+  .form-grid.three { grid-template-columns: 1fr; }
+  .form-grid.four  { grid-template-columns: 1fr 1fr; }
+  /* span classes collapse on mobile */
+  .span2, .span3, .span4 { grid-column: span 1; }
+
+  /* ── Labels & inputs ──────────────────────────────────────────────────── */
+  label {
+    display: block; font-size: 0.75rem; font-weight: 600; color: #555;
+    margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  /* font-size 16px prevents iOS auto-zoom on focus */
+  input[type=text], input[type=date], select, textarea {
+    width: 100%; padding: 11px 12px; border: 1.5px solid #ddd;
+    border-radius: 8px; font-size: 16px; color: #222;
+    background: #fafafa; transition: border-color 0.2s;
+    font-family: inherit; -webkit-appearance: none; appearance: none;
+  }
+  input[type=text]:focus, input[type=date]:focus, select:focus, textarea:focus {
+    outline: none; border-color: #e94560; background: white;
+  }
+  textarea { resize: vertical; min-height: 72px; }
+
+  /* ── Field hints ─────────────────────────────────────────────────────── */
+  /* Hint sits below the input, visible when field is empty & unfocused    */
+  .fh { position: relative; }
+  .fh .hint {
+    display: block; font-size: 0.67rem; color: #aaa;
+    margin-top: 3px; line-height: 1.35; pointer-events: none;
+  }
+  /* Hide when input/textarea is focused */
+  .fh input:focus  ~ .hint,
+  .fh textarea:focus ~ .hint { display: none; }
+  /* Hide when field has a value (placeholder no longer shown) */
+  .fh input:not(:placeholder-shown)    ~ .hint,
+  .fh textarea:not(:placeholder-shown) ~ .hint { display: none; }
+
+  input::placeholder, textarea::placeholder { color: transparent; }
+
+  /* ── Section titles ───────────────────────────────────────────────────── */
+  .section-title {
+    font-size: 0.9rem; font-weight: 700; color: #1a1a2e;
+    margin: 20px 0 12px; padding-bottom: 8px;
+    border-bottom: 2px solid #e94560;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title .num {
+    background: #e94560; color: white;
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; font-weight: 800; flex-shrink: 0;
+  }
+
+  /* ── Checklist ────────────────────────────────────────────────────────── */
+  /* Mobile: each row becomes a stacked card */
+  .checklist-table { width: 100%; border-collapse: collapse; }
+  .checklist-table thead { display: none; }
+  .checklist-table tr {
+    display: block; padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .checklist-table tr:last-child { border-bottom: none; }
+  .checklist-table td {
+    display: block; width: 100% !important;
+    padding: 3px 0; border: none; vertical-align: top;
+  }
+  .checklist-table .item-col {
+    font-size: 0.9rem; font-weight: 600; color: #222;
+    padding-bottom: 8px;
+  }
+  .checklist-table .status-col { margin-bottom: 6px; }
+  .checklist-table .status-col select { max-width: 180px; }
+
+  select.status-select {
+    padding: 9px 10px; font-size: 16px;
+    border-radius: 6px; cursor: pointer;
+  }
+  select.status-select option[value="Yes"]     { color: #16a34a; }
+  select.status-select option[value="No"]      { color: #dc2626; }
+  select.status-select option[value="Pending"] { color: #d97706; }
+  select.status-select option[value="N/A"]     { color: #6b7280; }
+
+  /* ── Site changes ─────────────────────────────────────────────────────── */
+  .changes-table { width: 100%; border-collapse: collapse; }
+  .changes-table thead { display: none; }
+  .changes-table tbody { display: block; }
+  .changes-table tr {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 10px 0; border-bottom: 1px solid #f0f0f0;
+    align-items: flex-start;
+  }
+  .changes-table tr:last-child { border-bottom: none; }
+  .changes-table td { display: block; border: none; padding: 0; }
+  .changes-table .rownum-col { flex: 0 0 28px; display: flex; align-items: center; justify-content: center; }
+  .changes-table .change-col { flex: 1 1 calc(100% - 80px); min-width: 0; }
+  .changes-table .owner-col  { flex: 0 0 100%; }
+  .changes-table .notes-col  { flex: 0 0 100%; }
+  .changes-table .pilot-col  { flex: 0 0 100%; }
+  .changes-table .action-col { flex: 0 0 44px; display: flex; align-items: center; justify-content: center; }
+  .rownum { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: #e5e7eb; border-radius: 50%; font-size: 0.75rem; font-weight: 700; color: #374151; }
+
+  .owner-checks { display: flex; flex-wrap: wrap; gap: 6px; }
+  .owner-checks label {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 0.82rem; font-weight: 500; color: #444;
+    text-transform: none; letter-spacing: 0; cursor: pointer;
+    background: #f5f5f5; padding: 5px 10px; border-radius: 6px;
+    transition: background 0.15s; min-height: 36px;
+  }
+  .owner-checks label:hover { background: #ffe4e8; }
+  .owner-checks input[type=checkbox] { width: auto; cursor: pointer; }
+
+  /* ── Image upload ─────────────────────────────────────────────────────── */
+  .image-slots { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .image-slot {
+    border: 2px dashed #ddd; border-radius: 10px; padding: 12px;
+    text-align: center; transition: border-color 0.2s;
+  }
+  .image-slot:active { border-color: #e94560; }
+  .image-slot .preview {
+    width: 100%; height: 110px; object-fit: cover; border-radius: 6px;
+    margin-bottom: 8px; display: none;
+  }
+  .image-slot .placeholder {
+    height: 110px; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; color: #aaa; font-size: 0.8rem; gap: 6px;
+    margin-bottom: 8px;
+  }
+  .image-slot .placeholder svg { width: 36px; height: 36px; }
+  .image-slot input[type=file] { display: none; }
+  .upload-btn {
+    display: inline-block; padding: 8px 14px; background: #f0f0f0;
+    border-radius: 6px; font-size: 0.82rem; cursor: pointer; color: #444;
+    font-weight: 600; border: 1px solid #ddd; transition: background 0.15s;
+    margin-bottom: 8px; min-height: 36px;
+  }
+  .remove-img-btn {
+    display: none; background: #fee2e2; color: #dc2626; border: none;
+    border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 0.78rem;
+    font-weight: 600; margin-bottom: 8px; min-height: 36px;
+  }
+  .delete-slot-btn {
+    position: absolute; top: 6px; right: 6px;
+    background: #fee2e2; color: #dc2626; border: none; border-radius: 50%;
+    width: 24px; height: 24px; cursor: pointer; font-size: 0.75rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; line-height: 1;
+  }
+  .image-slot { position: relative; }
+  .image-slot input[type=text] { text-align: center; }
+  .edit-img-btn { margin-bottom: 8px; }
+
+  /* ── Image Annotation Editor ──────────────────────────────────────────── */
+  #img-editor-modal {
+    position: fixed; inset: 0; z-index: 9999;
+    background: #0d0d1a;
+    display: flex; flex-direction: column; align-items: stretch;
+  }
+  .img-editor-toolbar {
+    display: flex; gap: 8px; padding: 10px 12px;
+    padding-top: calc(10px + env(safe-area-inset-top));
+    flex-wrap: wrap; align-items: center; justify-content: center;
+    width: 100%; background: #1a1a2e; flex-shrink: 0;
+  }
+  .tool-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 0 18px; border-radius: 10px; border: 2px solid transparent;
+    cursor: pointer; font-size: 0.95rem; font-weight: 600;
+    background: #2a2a4e; color: #bbb; transition: background 0.15s, border-color 0.15s;
+    height: 48px; min-width: 48px; -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  .tool-btn.active { border-color: #e94560; color: white; background: #4a1a2e; }
+  .tool-btn:active { background: #3a3a5e; color: white; }
+  .color-btn {
+    width: 48px; height: 48px; border-radius: 50%; border: 4px solid transparent;
+    cursor: pointer; flex-shrink: 0; transition: border-color 0.15s, transform 0.12s;
+    -webkit-tap-highlight-color: transparent; user-select: none;
+  }
+  .color-btn.active { border-color: white; transform: scale(1.18); }
+  .color-btn:active { transform: scale(0.95); }
+  .toolbar-sep { width: 1px; background: rgba(255,255,255,0.15); align-self: stretch; margin: 6px 2px; }
+  .img-editor-canvas-wrap {
+    flex: 1 1 0; display: flex; align-items: center; justify-content: center;
+    overflow: hidden; padding: 6px; width: 100%; min-height: 0;
+  }
+  #img-editor-canvas {
+    max-width: 100%; max-height: 100%; touch-action: none;
+    border-radius: 6px; display: block;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.08);
+  }
+  .img-editor-footer {
+    display: flex; gap: 12px; padding: 12px 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    justify-content: space-between; align-items: center;
+    width: 100%; background: #1a1a2e; flex-shrink: 0;
+  }
+  .img-editor-footer .btn { flex: 1; font-size: 1rem; height: 52px; }
+  #editor-text-bar {
+    display: none; gap: 8px; padding: 10px 12px;
+    background: #252542; align-items: center; width: 100%; flex-shrink: 0;
+  }
+  #editor-text-val {
+    flex: 1; padding: 10px 14px; border-radius: 8px;
+    border: 2px solid #444; background: #1a1a2e; color: white;
+    font-size: 16px; outline: none; font-family: inherit; min-width: 0;
+  }
+  #editor-text-val:focus { border-color: #e94560; }
+  .etxt-add {
+    padding: 0 18px; border-radius: 8px; border: none;
+    background: #e94560; color: white; font-size: 0.95rem; font-weight: 700;
+    cursor: pointer; height: 44px; white-space: nowrap;
+    -webkit-tap-highlight-color: transparent; flex-shrink: 0;
+  }
+  .etxt-cancel {
+    width: 44px; height: 44px; border-radius: 8px; border: none;
+    background: #333; color: #aaa; font-size: 1.1rem; font-weight: 700;
+    cursor: pointer; -webkit-tap-highlight-color: transparent; flex-shrink: 0;
+  }
+
+  /* ── Buttons ──────────────────────────────────────────────────────────── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 8px; padding: 12px 20px; border-radius: 8px; border: none;
+    cursor: pointer; font-size: 0.9rem; font-weight: 600;
+    transition: all 0.2s; min-height: 44px; -webkit-tap-highlight-color: transparent;
+  }
+  .btn-primary  { background: #e94560; color: white; }
+  .btn-primary:active  { background: #c73451; }
+  .btn-secondary { background: #f0f0f0; color: #444; }
+  .btn-secondary:active { background: #e0e0e0; }
+  .btn-danger   { background: #fee2e2; color: #dc2626; }
+  .btn-danger:active   { background: #fecaca; }
+  .btn-sm { padding: 8px 14px; font-size: 0.82rem; min-height: 38px; }
+
+  /* ── Actions bar ──────────────────────────────────────────────────────── */
+  .actions-bar {
+    background: white; border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    padding: 16px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .actions-bar .btn-primary { width: 100%; font-size: 1rem; padding: 15px; }
+  .actions-bar .tower-info { font-size: 0.9rem; color: #555; text-align: center; }
+
+  /* ── Tower tabs ───────────────────────────────────────────────────────── */
+  .tower-tabs {
+    display: flex; gap: 8px; margin-bottom: 16px;
+    overflow-x: auto; padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+  }
+  .tower-tabs::-webkit-scrollbar { display: none; }
+  .tower-tab {
+    display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+    padding: 10px 14px 10px 16px; border-radius: 8px; border: 2px solid #ddd;
+    background: white; cursor: pointer; font-size: 0.85rem; font-weight: 600;
+    color: #666; transition: all 0.2s; min-height: 44px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tower-tab.active { border-color: #e94560; background: #e94560; color: white; }
+  .tower-tab .del-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%; border: none;
+    background: rgba(0,0,0,0.15); color: inherit; cursor: pointer;
+    font-size: 0.72rem; font-weight: 800; line-height: 1;
+    transition: background 0.15s; padding: 0; flex-shrink: 0;
+  }
+
+  .tower-section { display: none; }
+  .tower-section.active { display: block; }
+
+  /* ── Section boxes ────────────────────────────────────────────────────── */
+  .section-box {
+    border: 1.5px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 6px;
+    background: #fafafa;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .section-box .section-title { margin-top: 0; }
+  .section-box.field-error {
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 0 3px rgba(239,68,68,0.15);
+    animation: shake 0.35s ease;
+  }
+  .card.field-error {
+    border: 2px solid #ef4444 !important;
+    box-shadow: 0 0 0 3px rgba(239,68,68,0.15);
+    animation: shake 0.35s ease;
+  }
+  input.field-error, select.field-error {
+    border-color: #ef4444 !important;
+    outline: none;
+  }
+  @keyframes shake {
+    0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 60%{transform:translateX(6px)}
+  }
+  #val-banner {
+    display:none; position:fixed; top:0; left:0; right:0; z-index:10000;
+    background:#ef4444; color:white; text-align:center;
+    padding:10px 16px; font-size:0.88rem; font-weight:600;
+    box-shadow:0 2px 8px rgba(0,0,0,0.2);
+  }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+  }
+  .badge-yes     { background: #dcfce7; color: #16a34a; }
+  .badge-pending { background: #fef9c3; color: #854d0e; }
+  .badge-no      { background: #fee2e2; color: #dc2626; }
+
+  /* ── Desktop overrides (≥ 640px) ─────────────────────────────────────── */
+  @media (min-width: 640px) {
+    .app-header { padding: 18px 32px; }
+    .app-header h1 { font-size: 1.4rem; }
+    .app-header .logo { width: 40px; height: 40px; }
+
+    .container { padding: 28px 20px 60px; }
+
+    .card-body { padding: 24px; }
+    .card-header { padding: 14px 24px; font-size: 1rem; }
+
+    .form-grid       { grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+    .form-grid.four  { grid-template-columns: 1fr 1fr 1fr 1fr; }
+    .span2 { grid-column: span 2; }
+    .span3 { grid-column: span 3; }
+    .span4 { grid-column: span 4; }
+
+    input[type=text], input[type=date], select, textarea { font-size: 0.9rem; padding: 9px 12px; }
+    select.status-select { font-size: 0.85rem; padding: 7px 10px; }
+
+    /* Restore full checklist table on desktop */
+    .checklist-table thead { display: table-header-group; }
+    .checklist-table tr { display: table-row; padding: 0; border-bottom: none; }
+    .checklist-table td { display: table-cell; padding: 8px 10px; border-bottom: 1px solid #f0f0f0; width: auto !important; }
+    .checklist-table tr:last-child td { border-bottom: none; }
+    .checklist-table .item-col { font-size: 0.88rem; padding-top: 12px; width: 50% !important; font-weight: normal; }
+    .checklist-table .status-col { width: 140px !important; margin-bottom: 0; }
+    .checklist-table .status-col select { max-width: none; }
+    .checklist-table th {
+      background: #f5f5f5; padding: 9px 12px;
+      font-size: 0.78rem; font-weight: 700; color: #555;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      border-bottom: 2px solid #e0e0e0; text-align: left;
+    }
+
+    /* Restore full changes table on desktop */
+    .changes-table thead { display: table-header-group; }
+    .changes-table tbody { display: table-row-group; }
+    .changes-table tr { display: table-row; flex-wrap: unset; padding: 0; border-bottom: none; gap: 0; }
+    .changes-table td { display: table-cell; padding: 8px 10px; border-bottom: 1px solid #f0f0f0; }
+    .changes-table tr:last-child td { border-bottom: none; }
+    .changes-table .rownum-col { width: 36px; text-align: center; flex: none; }
+    .changes-table .change-col { width: 28%; flex: none; }
+    .changes-table .owner-col  { width: 34%; flex: none; }
+    .changes-table .notes-col  { width: auto; flex: none; }
+    .changes-table .pilot-col  { width: 18%; flex: none; }
+    .changes-table .action-col { width: 44px; text-align: center; flex: none; }
+    .changes-table th {
+      background: #f5f5f5; padding: 9px 12px;
+      font-size: 0.78rem; font-weight: 700; color: #555;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      border-bottom: 2px solid #e0e0e0; text-align: left;
+    }
+
+    .image-slots { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+    .image-slot { padding: 16px; }
+    .image-slot .preview { height: 140px; }
+    .image-slot .placeholder { height: 140px; }
+
+    .actions-bar { flex-direction: row; align-items: center; padding: 20px 24px; }
+    .actions-bar .btn-primary { width: auto; font-size: 0.85rem; padding: 10px 20px; }
+    .actions-bar .tower-info { text-align: left; }
+    .actions-bar::after { content: ''; flex: 1; }
+
+    .tower-tabs { flex-wrap: wrap; overflow-x: unset; }
+    .tower-tab { flex-shrink: unset; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <div class="logo">D</div>
+  <h1>DBot Site Visit Assessment</h1>
+  <div id="val-banner"></div>
+
+<button type="button" id="fillDemoBtn" onclick="fillDemoData()"
+    style="margin-left:auto;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.9);
+           border:1px solid rgba(255,255,255,0.2);border-radius:8px;
+           padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer;
+           display:flex;align-items:center;gap:6px;min-height:34px;
+           transition:background 0.15s;white-space:nowrap;">
+    ⚡ Fill Demo
+  </button>
+</div>
+
+<div class="container">
+  <form method="POST" action="/generate" enctype="multipart/form-data" id="reportForm">
+    <input type="hidden" name="tower_count" id="tower_count" value="1">
+
+    <!-- Report Header -->
+    <div class="card">
+      <div class="card-header">Report Header</div>
+      <div class="card-body">
+        <div class="form-grid four">
+          <div>
+            <label>Area</label>
+            <div class="fh">
+              <input type="text" name="area" placeholder=" ">
+              <small class="hint">Name of the area or community being assessed, e.g. Town Square, Dubai</small>
+            </div>
+          </div>
+          <div>
+            <label>Date</label>
+            <input type="date" name="date">
+          </div>
+          <div>
+            <label>Assessor Name</label>
+            <div class="fh">
+              <input type="text" name="assessor" placeholder=" ">
+              <small class="hint">Full name of the person conducting the site visit</small>
+            </div>
+          </div>
+          <div>
+            <label>Assessor Contact</label>
+            <div class="fh">
+              <input type="text" name="assessor_contact" placeholder=" ">
+              <small class="hint">Phone number or email address of the assessor</small>
+            </div>
+          </div>
+          <div class="span4">
+            <label>Building Contact</label>
+            <div class="fh">
+              <input type="text" name="building_contact" placeholder=" ">
+              <small class="hint">Name and contact details of the building manager or on-site representative</small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tower Tabs -->
+    <div class="tower-tabs" id="towerTabs">
+      <button type="button" class="btn btn-secondary btn-sm" id="addTowerBtn">+ Add Tower</button>
+    </div>
+    <input type="hidden" name="active_towers" id="active_towers" value="1">
+
+    <div id="towers-container"></div>
+
+    <div class="actions-bar">
+      <button type="submit" class="btn btn-primary">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+        Generate PDF
+      </button>
+      <div class="tower-info" id="tower-count-label"><strong>1 tower</strong> in this report</div>
+    </div>
+  </form>
+</div>
+
+<script>
+const CHECKLIST_ITEMS = {{ checklist_items | tojson }};
+const OWNERS = {{ owners | tojson }};
+
+// Render a labeled input with a visible hint that disappears on focus/input
+function fi(label, name, hint, extra='') {
+  return `<div>
+    <label>${label}</label>
+    <div class="fh">
+      <input type="text" name="${name}" placeholder=" " ${extra}>
+      <small class="hint">${hint}</small>
+    </div>
+  </div>`;
+}
+function fd(label, name, opts, hint='') {
+  const options = opts.map(([v,t])=>`<option value="${v}">${t}</option>`).join('');
+  return `<div>
+    <label>${label}</label>
+    <select name="${name}">${options}</select>
+    ${hint ? `<small style="font-size:0.67rem;color:#aaa;margin-top:3px;display:block;line-height:1.35">${hint}</small>` : ''}
+  </div>`;
+}
+
+let activeTowers = [1];
+
+// ── Change rows (generic: works for d1 and d2) ───────────────────────────
+
+function makeD1ChangeRow(idx, i) {
+  return `<tr>
+    <td class="rownum-col"><span class="rownum">${i + 1}</span></td>
+    <td class="change-col"><div class="fh"><input type="text" name="tower_${idx}_d1_change_${i}_text" placeholder=" "><small class="hint">Describe the required physical or infrastructure change needed at this site</small></div></td>
+    <td class="owner-col">${OWNERS.map(o=>`<label style="display:inline-flex;align-items:center;gap:4px;margin-right:6px;font-size:0.82rem;white-space:nowrap"><input type="checkbox" name="tower_${idx}_d1_change_${i}_owners" value="${o}"> ${o}</label>`).join('')}</td>
+    <td class="notes-col"><div class="fh"><input type="text" name="tower_${idx}_d1_change_${i}_notes" placeholder=" "><small class="hint">Additional notes, timeline, or details about this change</small></div></td>
+    <td class="action-col"><button type="button" class="btn btn-danger btn-sm" onclick="deleteChangeRow(this,'d1',${idx})">✕</button></td>
+  </tr>`;
+}
+
+function makeD2ChangeRow(idx, i) {
+  return `<tr>
+    <td class="rownum-col"><span class="rownum">${i + 1}</span></td>
+    <td class="change-col"><div class="fh"><input type="text" name="tower_${idx}_d2_change_${i}_text" placeholder=" "><small class="hint">Describe the required physical or infrastructure change needed at this site</small></div></td>
+    <td class="owner-col">${OWNERS.map(o=>`<label style="display:inline-flex;align-items:center;gap:4px;margin-right:6px;font-size:0.82rem;white-space:nowrap"><input type="checkbox" name="tower_${idx}_d2_change_${i}_owners" value="${o}"> ${o}</label>`).join('')}</td>
+    <td class="notes-col"><div class="fh"><input type="text" name="tower_${idx}_d2_change_${i}_notes" placeholder=" "><small class="hint">Additional notes, timeline, or details about this change</small></div></td>
+    <td class="action-col"><button type="button" class="btn btn-danger btn-sm" onclick="deleteChangeRow(this,'d2',${idx})">✕</button></td>
+  </tr>`;
+}
+
+function addChangeRow(dock, towerIdx) {
+  const tbody = document.getElementById(`${dock}-changes-body-${towerIdx}`);
+  const count = tbody.querySelectorAll('tr').length;
+  const html  = dock === 'd1' ? makeD1ChangeRow(towerIdx, count) : makeD2ChangeRow(towerIdx, count);
+  tbody.insertAdjacentHTML('beforeend', html);
+  renumberChangeRows(dock, towerIdx);
+}
+
+function deleteChangeRow(btn, dock, towerIdx) {
+  btn.closest('tr').remove();
+  renumberChangeRows(dock, towerIdx);
+}
+
+function renumberChangeRows(dock, towerIdx) {
+  const tbody = document.getElementById(`${dock}-changes-body-${towerIdx}`);
+  tbody.querySelectorAll('tr').forEach((tr, i) => {
+    const numEl = tr.querySelector('.rownum');
+    if (numEl) numEl.textContent = i + 1;
+    tr.querySelectorAll('[name]').forEach(el => {
+      el.name = el.name.replace(
+        new RegExp(`tower_${towerIdx}_${dock}_change_\\d+`),
+        `tower_${towerIdx}_${dock}_change_${i}`
+      );
+    });
+  });
+  document.getElementById(`${dock}-change-count-${towerIdx}`).value =
+    tbody.querySelectorAll('tr').length;
+}
+
+
+// ── Tower HTML ────────────────────────────────────────────────────────────
+
+function makeDockingSection(idx, dock, label, sectionNum) {
+  const D = dock.toUpperCase();
+  return `
+    <div id="dock-${dock}-${idx}">
+    <div class="section-title" style="justify-content:space-between">
+      <span style="display:flex;align-items:center;gap:8px">
+        <span class="num">${sectionNum}</span>
+        <span class="dock-title-${dock}-${idx}">${label}</span>
+      </span>
+      ${dock === 'd2' ? `<button type="button" onclick="deleteDock('${dock}',${idx})"
+        style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:0.78rem;font-weight:600;min-height:30px;">
+        ✕ Remove
+      </button>` : ''}
+    </div>
+    <div class="form-grid four">
+      ${fi('Access Point',`tower_${idx}_${dock}_access`,'Where the robot enters the building for this docking option, e.g. main lobby, side service entrance')}
+      ${fd('Elevator Type',`tower_${idx}_${dock}_elev_type`,[['Service','Service'],['Resident','Resident']],'Whether the robot uses the service elevator or the resident elevator')}
+      ${fi('Elevator ID',`tower_${idx}_${dock}_elev_id`,'Identifier or label of the specific elevator to be used, e.g. ELV-01 or North elevator')}
+      ${fd('Connectivity',`tower_${idx}_${dock}_conn`,[['Good','Good'],['Weak','Weak'],['No signal','No signal']],'Wi-Fi or LTE signal strength measured at the elevator interior')}
+      ${fi('Door Width (cm)',`tower_${idx}_${dock}_width`,'Measured clear opening width of the elevator door in centimetres, e.g. 110')}
+      ${fi('Cabin Depth (cm)',`tower_${idx}_${dock}_depth`,'Measured depth of the elevator cabin from door to back wall in centimetres, e.g. 150')}
+      ${fi('Provider / Type',`tower_${idx}_${dock}_provider`,'Elevator manufacturer or brand, e.g. Otis, Fujitec, Schindler, Kone')}
+      ${fi('Comments',`tower_${idx}_${dock}_comments`,'Any additional observations about the elevator condition, access restrictions, or special requirements')}
+    </div>
+
+    <div style="margin-top:14px;font-size:0.82rem;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">
+      Site Changes for ${label}
+    </div>
+    <div style="overflow-x:auto">
+    <table class="changes-table">
+      <thead>
+        <tr>
+          <th class="rownum-col">#</th>
+          <th class="change-col">Change Required</th>
+          <th class="owner-col">Owner</th>
+          <th class="notes-col">Notes</th>
+          <th class="action-col"></th>
+        </tr>
+      </thead>
+      <tbody id="${dock}-changes-body-${idx}">
+        ${dock === 'd1'
+          ? [0,1].map(i => makeD1ChangeRow(idx, i)).join('')
+          : [0,1].map(i => makeD2ChangeRow(idx, i)).join('')
+        }
+      </tbody>
+    </table>
+    </div>
+    <input type="hidden" name="tower_${idx}_${dock}_change_count" id="${dock}-change-count-${idx}"
+           value="2">
+    <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px"
+            onclick="addChangeRow('${dock}',${idx})">+ Add Row</button>
+    </div>`;
+}
+
+function makeTowerHTML(idx) {
+  return `
+  <div class="tower-section" id="tower-section-${idx}">
+    <div class="card">
+      <div class="card-header">
+        <span>Tower ${idx}</span>
+        <div class="card-header-actions">
+          <button type="button" onclick="duplicateTower(${idx})"
+            style="background:rgba(255,255,255,0.15);border:none;color:white;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;min-height:36px;">
+            ⧉ Duplicate
+          </button>
+          <button type="button" onclick="deleteTower(${idx})"
+            style="background:rgba(220,38,38,0.5);border:none;color:white;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;min-height:36px;">
+            ✕ Delete
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+
+        <!-- Tower Name -->
+        <div class="form-grid">
+          <div class="span2">
+            ${fi('Tower Name',`tower_${idx}_name`,'Unique building identifier used as the tower heading in the report, e.g. Zahra Apartments 1A-1')}
+          </div>
+        </div>
+
+        <!-- Executive Summary (no number) -->
+        <div class="section-box">
+          <div class="section-title">Executive Summary</div>
+        </div>
+
+        <!-- 1. Checklist -->
+        <div class="section-box">
+        <div class="section-title"><span class="num">1</span> Checklist</div>
+        <table class="checklist-table">
+          <thead><tr><th>Item</th><th>Done</th><th>Notes</th></tr></thead>
+          <tbody>
+            ${CHECKLIST_ITEMS.map((item, i) => `
+            <tr>
+              <td class="item-col">${item}</td>
+              <td class="status-col">
+                <select name="tower_${idx}_check_${i}_done" class="status-select">
+                  <option value="" selected disabled>Choose</option>
+                  <option value="Yes">Yes ☑</option>
+                  <option value="No">No ☐</option>
+                  ${i === 2 ? '<option value="Pending">Pending ◷</option>' : ''}
+
+                </select>
+              </td>
+              <td><div class="fh"><input type="text" name="tower_${idx}_check_${i}_notes" placeholder=" "><small class="hint">Add any relevant notes or observations for this checklist item</small></div></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+
+        </div><!-- end checklist section-box -->
+
+        <!-- 2. Building Overview -->
+        <div class="section-box">
+        <div class="section-title"><span class="num">2</span> Building Overview</div>
+        <div class="form-grid four">
+          ${fi('Total Floors',`tower_${idx}_total_floors`,'Total number of floors in the building including basement and rooftop')}
+          ${fi('Operational Floors',`tower_${idx}_op_floors`,'Floor range the robot will operate on, e.g. 1–25 or specific floor numbers')}
+          ${fi('Excluded Floors',`tower_${idx}_excluded_floors`,'Floors excluded from robot operation, e.g. penthouse, floor 13, mechanical floors')}
+          ${fi('Notes',`tower_${idx}_building_notes`,'Any relevant building-level observations affecting robot deployment')}
+        </div>
+
+        </div><!-- end building section-box -->
+
+        <!-- 3. Docking Option 1 -->
+        <div class="section-box">
+        ${makeDockingSection(idx, 'd1', 'Docking Option 1', 3)}
+        </div>
+
+        <!-- 4. Docking Option 2 -->
+        <div class="section-box">
+        ${makeDockingSection(idx, 'd2', 'Docking Option 2', 4)}
+        </div>
+
+        <!-- 5. Site Images -->
+        <div class="section-box">
+        <div class="section-title"><span class="num">5</span> Site Images</div>
+        <div class="image-slots" id="image-slots-${idx}">
+          ${[0,1,2,3].map(j => makeImageSlot(idx, j)).join('')}
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" style="margin-top:10px"
+                onclick="addImageSlot(${idx})">+ Add Image</button>
+        <input type="hidden" name="tower_${idx}_img_count" id="img-count-${idx}" value="4">
+        </div><!-- end images section-box -->
+
+        <input type="hidden" name="tower_${idx}_active_docks" id="active-docks-${idx}" value="d1,d2">
+
+      </div>
+    </div>
+  </div>`;
+}
+
+const imageCounters = {}; // per-tower unique ID counter
+
+function makeImageSlot(towerIdx, imgIdx) {
+  return `
+  <div class="image-slot">
+    <button type="button" class="delete-slot-btn" onclick="deleteImageSlot(this,${towerIdx})" title="Remove slot">✕</button>
+    <img class="preview" src="" alt="" style="display:none">
+    <div class="placeholder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+        <path d="M21 15l-5-5L5 21"/>
+      </svg>
+      <span>Tap to upload</span>
+    </div>
+    <label class="upload-btn">Choose Image
+      <input type="file" name="tower_${towerIdx}_img_${imgIdx}_file"
+             accept="image/*" onchange="handleImageSelect(this,event)">
+    </label>
+    <button type="button" class="edit-img-btn btn btn-secondary btn-sm" onclick="reopenImageEditor(this)" style="display:none">Edit / Annotate</button>
+    <button type="button" class="remove-img-btn" onclick="removeImage(this)">Remove</button>
+    <input type="hidden" name="tower_${towerIdx}_img_${imgIdx}_token" value="">
+    <input type="hidden" name="tower_${towerIdx}_img_${imgIdx}_data_uri" value="">
+    <input type="text" name="tower_${towerIdx}_img_${imgIdx}_caption" placeholder="Caption">
+  </div>`;
+}
+
+// ── Image helpers ─────────────────────────────────────────────────────────
+
+function handleImageSelect(input, event) {
+  if (!input.files || !input.files[0]) return;
+  const slot = input.closest('.image-slot');
+  const reader = new FileReader();
+  reader.onload = e => {
+    const dataUrl = e.target.result;
+    slot.dataset.origDataUri = dataUrl;
+    if (event && event.isTrusted) {
+      // User-initiated upload: open annotation editor
+      openImageEditor(slot, dataUrl);
+    } else {
+      // Programmatic (demo fill): just show preview
+      slot.querySelector('.preview').src = dataUrl;
+      slot.querySelector('.preview').style.display = 'block';
+      slot.querySelector('.placeholder').style.display = 'none';
+      slot.querySelector('.remove-img-btn').style.display = 'inline-block';
+    }
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+function reopenImageEditor(btn) {
+  const slot = btn.closest('.image-slot');
+  const origUrl = slot.dataset.origDataUri || slot.querySelector('.preview').src;
+  if (origUrl) openImageEditor(slot, origUrl);
+}
+
+function removeImage(btn) {
+  const slot = btn.closest('.image-slot');
+  slot.querySelector('input[type=file]').value = '';
+  const uriInput = slot.querySelector('input[name$="_data_uri"]');
+  if (uriInput) uriInput.value = '';
+  const tokenInput = slot.querySelector('input[name$="_token"]');
+  if (tokenInput) tokenInput.value = '';
+  slot.querySelector('.preview').src = '';
+  slot.querySelector('.preview').style.display = 'none';
+  slot.querySelector('.placeholder').style.display = 'flex';
+  btn.style.display = 'none';
+  const editBtn = slot.querySelector('.edit-img-btn');
+  if (editBtn) editBtn.style.display = 'none';
+  delete slot.dataset.origDataUri;
+}
+
+// Upload a data URI to the server; store the returned token in the slot.
+// Falls back silently to keeping data_uri in the form field if the upload fails.
+// Track in-flight image uploads so form submission can wait for them
+let _pendingUploads = 0;
+
+function _setPendingUploads(n) {
+  _pendingUploads = n;
+  const btn = document.querySelector('button[type="submit"]');
+  if (!btn) return;
+  if (n > 0) {
+    btn.disabled = true;
+    btn.dataset.origText = btn.dataset.origText || btn.innerText;
+    btn.innerText = `Uploading image${n > 1 ? 's' : ''}…`;
+  } else {
+    btn.disabled = false;
+    if (btn.dataset.origText) btn.innerText = btn.dataset.origText;
+  }
+}
+
+async function _uploadImage(slot, dataUri) {
+  const tokenInput = slot.querySelector('input[name$="_token"]');
+  const uriInput   = slot.querySelector('input[name$="_data_uri"]');
+
+  // Set data_uri immediately as a reliable fallback
+  if (uriInput) uriInput.value = dataUri;
+  tokenInput.value = '';
+
+  _setPendingUploads(_pendingUploads + 1);
+  try {
+    const res  = await fetch('/api/img_upload', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({data_uri: dataUri}),
+    });
+    const json = await res.json();
+    if (json.token) {
+      tokenInput.value = json.token;
+      if (uriInput) uriInput.value = '';  // token saved — clear huge base64
+    }
+  } catch (err) {
+    // Upload failed — data_uri fallback is already set above
+    console.warn('img pre-upload failed, falling back to inline data_uri', err);
+  } finally {
+    _setPendingUploads(_pendingUploads - 1);
+  }
+}
+
+function deleteImageSlot(btn, towerIdx) {
+  btn.closest('.image-slot').remove();
+  renumberImageSlots(towerIdx);
+}
+
+function renumberImageSlots(towerIdx) {
+  const grid = document.getElementById(`image-slots-${towerIdx}`);
+  grid.querySelectorAll('.image-slot').forEach((slot, i) => {
+    slot.querySelectorAll('[name]').forEach(el => {
+      el.name = el.name.replace(
+        new RegExp(`tower_${towerIdx}_img_\\d+_`),
+        `tower_${towerIdx}_img_${i}_`
+      );
+    });
+  });
+  document.getElementById(`img-count-${towerIdx}`).value =
+    grid.querySelectorAll('.image-slot').length;
+}
+
+function addImageSlot(towerIdx) {
+  if (!imageCounters[towerIdx]) imageCounters[towerIdx] = 0;
+  const grid = document.getElementById(`image-slots-${towerIdx}`);
+  const i = imageCounters[towerIdx]++;
+  grid.insertAdjacentHTML('beforeend', makeImageSlot(towerIdx, i));
+  renumberImageSlots(towerIdx);
+}
+
+// ── Demo fill ─────────────────────────────────────────────────────────────
+
+function makeDummyImageFile(label, bgColor) {
+  return new Promise(resolve => {
+    const c = document.createElement('canvas');
+    c.width = 800; c.height = 600;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, 800, 600);
+    // simple grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < 800; x += 80) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,600); ctx.stroke(); }
+    for (let y = 0; y < 600; y += 60) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(800,y); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(0, 240, 800, 120);
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 32px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, 400, 295);
+    ctx.font = '18px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillText('DEMO IMAGE', 400, 330);
+    c.toBlob(blob => resolve(new File([blob], label.replace(/\s+/g,'_')+'.jpg', {type:'image/jpeg'})), 'image/jpeg', 0.92);
+  });
+}
+
+function setField(name, value) {
+  const el = document.querySelector(`[name="${name}"]`);
+  if (el) { el.value = value; el.dispatchEvent(new Event('input')); }
+}
+
+async function fillDemoData() {
+  const btn = document.getElementById('fillDemoBtn');
+  btn.textContent = '⏳ Filling…'; btn.disabled = true;
+
+  // ── Header ──────────────────────────────────────────────────────────────
+  setField('area',             'Zahra Community, Town Square');
+  setField('date',             new Date().toISOString().slice(0,10));
+  setField('assessor',         'Ali Hassan');
+  setField('assessor_contact', '+971 50 123 4567');
+  setField('building_contact', 'Mohammed Al-Rashid  /  +971 55 987 6543');
+
+  // ── Per-tower ────────────────────────────────────────────────────────────
+  const checkDone  = ['Yes','Yes','Pending','Yes','No','Yes'];
+  const checkNotes = [
+    'Service elevator ELV-01 selected — rear of main lobby',
+    'Good LTE signal confirmed inside cabin',
+    'Door width borderline — final measurement pending',
+    'Docking area identified near lobby power room',
+    'No existing socket — client to install prior to deployment',
+    'All corridor doors checked, no obstructions',
+  ];
+  const imgColors  = ['#2563eb','#16a34a','#d97706','#7c3aed'];
+  const imgLabels  = ['Docking Location','Elevator Entrance','Site Mod 1','Site Mod 2'];
+  const imgCaps    = ['Docking area — lobby level','Elevator ELV-01 entrance','Required modification area','Power socket location'];
+
+  for (const idx of [...activeTowers]) {
+    setField(`tower_${idx}_name`, `Zahra Tower ${idx}A`);
+
+    // Checklist
+    for (let i = 0; i < 6; i++) {
+      const sel = document.querySelector(`[name="tower_${idx}_check_${i}_done"]`);
+      if (sel) sel.value = checkDone[i];
+      setField(`tower_${idx}_check_${i}_notes`, checkNotes[i]);
+    }
+
+    // Building
+    setField(`tower_${idx}_total_floors`,    '28');
+    setField(`tower_${idx}_op_floors`,       '1 – 25');
+    setField(`tower_${idx}_excluded_floors`, 'Floors 26–28 (penthouse)');
+    setField(`tower_${idx}_building_notes`,  'Service elevator rear lobby. Loading bay access 06:00–22:00.');
+
+    // Docking helpers
+    const fillDock = (dock, access, elevId, width, depth, provider) => {
+      setField(`tower_${idx}_${dock}_access`,   access);
+      const etSel = document.querySelector(`[name="tower_${idx}_${dock}_elev_type"]`);
+      if (etSel) etSel.value = 'Service';
+      setField(`tower_${idx}_${dock}_elev_id`,  elevId);
+      const connSel = document.querySelector(`[name="tower_${idx}_${dock}_conn"]`);
+      if (connSel) connSel.value = 'Good';
+      setField(`tower_${idx}_${dock}_width`,    width);
+      setField(`tower_${idx}_${dock}_depth`,    depth);
+      setField(`tower_${idx}_${dock}_provider`, provider);
+      setField(`tower_${idx}_${dock}_comments`, 'No abnormal observations during inspection.');
+      setField(`tower_${idx}_${dock}_change_0_text`,  'Install 13A socket within 2 m of docking area');
+      setField(`tower_${idx}_${dock}_change_0_notes`, 'Client responsible — deadline 2 weeks pre-deployment');
+      setField(`tower_${idx}_${dock}_change_1_text`,  'Re-paint floor marking at elevator threshold');
+      setField(`tower_${idx}_${dock}_change_1_notes`, 'Building team to action before commissioning');
+      // tick first owner checkbox (Building)
+      const cb = document.querySelector(`[name="tower_${idx}_${dock}_change_0_owners"][value="Building"]`);
+      if (cb) cb.checked = true;
+      const cb2 = document.querySelector(`[name="tower_${idx}_${dock}_change_1_owners"][value="Client"]`);
+      if (cb2) cb2.checked = true;
+    };
+    fillDock('d1', 'Main lobby — service elevator bank', 'ELV-01', '110', '155', 'Otis Gen2');
+    fillDock('d2', 'Side service entrance — freight elevator', 'ELV-03', '120', '160', 'Fujitec');
+
+    // Images — generate dummy canvases
+    const slots = document.getElementById(`image-slots-${idx}`).querySelectorAll('.image-slot');
+    for (let j = 0; j < Math.min(slots.length, 4); j++) {
+      const file = await makeDummyImageFile(imgLabels[j], imgColors[j]);
+      const dt = new DataTransfer(); dt.items.add(file);
+      const fileInput = slots[j].querySelector('input[type=file]');
+      if (fileInput) { fileInput.files = dt.files; fileInput.dispatchEvent(new Event('change')); }
+      setField(`tower_${idx}_img_${j}_caption`, imgCaps[j]);
+    }
+  }
+
+  btn.textContent = '✓ Done'; btn.disabled = false;
+  setTimeout(() => { btn.textContent = '⚡ Fill Demo'; }, 2000);
+}
+
+// ── Image Annotation Editor ───────────────────────────────────────────────
+
+const IE = {
+  slot: null, img: new Image(), canvas: null, ctx: null,
+  annotations: [],
+  tool: 'rect',        // 'rect' | 'line' | 'text'
+  color: 'red',        // 'red'  | 'green'
+  drawing: false, drawStart: {x:0,y:0}, _draft: null,
+  _textX: 0, _textY: 0,
+  selected: -1,        // index of selected annotation
+  _mode: null,         // null | 'move-rect' | 'resize-rect' | 'move-line' | 'drag-ep'
+  _resizeFixed: null,  // opposite corner when resizing rect
+  _dragOff: {x:0,y:0},// offset from tap to rect anchor (move) or line x1/y1 (move-line)
+  _epIdx: 0,           // endpoint index being dragged (0=start, 1=end)
+};
+
+function openImageEditor(slot, dataUrl) {
+  IE.slot = slot;
+  IE.annotations = [];
+  IE.tool  = 'rect';
+  IE.color = 'red';
+  IE._draft = null;
+  IE.selected = -1;
+  IE._mode = null;
+  document.querySelectorAll('.tool-btn[data-tool]').forEach(b =>
+    b.classList.toggle('active', b.dataset.tool === 'rect'));
+  document.querySelectorAll('.color-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.color === 'red'));
+  document.getElementById('editor-text-bar').style.display = 'none';
+
+  IE.img.onload = () => {
+    IE.canvas = document.getElementById('img-editor-canvas');
+    IE.ctx    = IE.canvas.getContext('2d');
+    document.getElementById('img-editor-modal').style.display = 'flex';
+    requestAnimationFrame(() => {
+      const wrap  = IE.canvas.closest('.img-editor-canvas-wrap');
+      const wrapW = wrap.clientWidth  - 12;
+      const wrapH = wrap.clientHeight - 12;
+      const ratio = IE.img.naturalWidth / IE.img.naturalHeight;
+      let cw, ch;
+      if (wrapW / ratio <= wrapH) { cw = wrapW; ch = Math.round(wrapW / ratio); }
+      else { ch = wrapH; cw = Math.round(wrapH * ratio); }
+      IE.canvas.width  = Math.max(cw, 50);
+      IE.canvas.height = Math.max(ch, 50);
+      IE.canvas.style.cursor = 'crosshair';
+      editorRedraw();
+    });
+  };
+  IE.img.src = dataUrl;
+}
+
+function editorSetTool(btn, tool) {
+  IE.tool = tool;
+  IE.selected = -1;
+  IE._mode = null;
+  document.querySelectorAll('.tool-btn[data-tool]').forEach(b =>
+    b.classList.toggle('active', b === btn));
+  if (tool !== 'text') document.getElementById('editor-text-bar').style.display = 'none';
+  if (IE.canvas) editorRedraw();
+}
+
+function editorSetColor(btn, color) {
+  IE.color = color;
+  document.querySelectorAll('.color-btn').forEach(b =>
+    b.classList.toggle('active', b === btn));
+  document.getElementById('editor-text-val').style.borderColor =
+    color === 'red' ? '#ff4444' : '#22cc22';
+}
+
+function editorClearAll() {
+  if (!IE.annotations.length) return;
+  if (!confirm('Clear all annotations?')) return;
+  IE.annotations = [];
+  IE.selected = -1;
+  IE._mode = null;
+  editorRedraw();
+}
+
+function editorCancel() {
+  IE.selected = -1; IE._mode = null;
+  document.getElementById('editor-text-bar').style.display = 'none';
+  document.getElementById('img-editor-modal').style.display = 'none';
+}
+
+function editorDone() {
+  IE.selected = -1;
+  const off = document.createElement('canvas');
+  // Cap at 2560px on the long side to keep quality high but limit payload size
+  const MAX_DIM = 2560;
+  const nw = IE.img.naturalWidth, nh = IE.img.naturalHeight;
+  const scale = Math.min(1, MAX_DIM / Math.max(nw, nh));
+  off.width  = Math.round(nw * scale);
+  off.height = Math.round(nh * scale);
+  const ctx2 = off.getContext('2d');
+  const sx = nw / IE.canvas.width;
+  const sy = nh / IE.canvas.height;
+  ctx2.drawImage(IE.img, 0, 0, off.width, off.height);
+  IE.annotations.forEach(ann => editorDrawOne(ctx2, ann, sx * scale, sy * scale));
+  const dataUri = off.toDataURL('image/jpeg', 0.92);
+
+  // Store data_uri immediately as backup, then try to swap for a server token
+  const _uriBackup = IE.slot.querySelector('input[name$="_data_uri"]');
+  if (_uriBackup) _uriBackup.value = dataUri;
+  _uploadImage(IE.slot, dataUri);
+
+  const preview = IE.slot.querySelector('.preview');
+  preview.src = dataUri;
+  preview.style.display = 'block';
+  IE.slot.querySelector('.placeholder').style.display = 'none';
+  IE.slot.querySelector('.remove-img-btn').style.display = 'inline-block';
+  const editBtn = IE.slot.querySelector('.edit-img-btn');
+  if (editBtn) editBtn.style.display = 'inline-block';
+
+  document.getElementById('editor-text-bar').style.display = 'none';
+  document.getElementById('img-editor-modal').style.display = 'none';
+}
+
+// ── Text tool ─────────────────────────────────────────────────────────────
+
+function editorCommitText() {
+  const val = document.getElementById('editor-text-val').value.trim();
+  document.getElementById('editor-text-bar').style.display = 'none';
+  if (val) {
+    IE.annotations.push({ type:'text', color:IE.color, x:IE._textX, y:IE._textY, text:val });
+    editorRedraw();
+  }
+}
+function editorCancelText() {
+  document.getElementById('editor-text-bar').style.display = 'none';
+}
+
+// ── Geometry helpers ──────────────────────────────────────────────────────
+
+function _handleR() { return Math.max(18, IE.canvas.width * 0.045); }
+
+// Snap line endpoint to nearby rect attach points (skip annotation at skipIdx)
+function _snapPt(px, py, skipIdx) {
+  const dist = IE.canvas.width * 0.06;
+  let best = null, bestD = dist;
+  IE.annotations.forEach((a, i) => {
+    if (i === skipIdx || a.type !== 'rect') return;
+    const lx = Math.min(a.x, a.x+a.w), rx = Math.max(a.x, a.x+a.w);
+    const ty = Math.min(a.y, a.y+a.h), by = Math.max(a.y, a.y+a.h);
+    const cx = (lx+rx)/2, cy = (ty+by)/2;
+    for (const [qx,qy] of [[lx,ty],[rx,ty],[lx,by],[rx,by],[cx,ty],[cx,by],[lx,cy],[rx,cy],[cx,cy]]) {
+      const d = Math.hypot(px-qx, py-qy);
+      if (d < bestD) { bestD = d; best = {x:qx, y:qy}; }
+    }
+  });
+  return best;
+}
+
+// Is (px,py) inside rect annotation a?
+function _insideRect(px, py, a) {
+  const lx = Math.min(a.x, a.x+a.w), rx = Math.max(a.x, a.x+a.w);
+  const ty = Math.min(a.y, a.y+a.h), by = Math.max(a.y, a.y+a.h);
+  return px >= lx && px <= rx && py >= ty && py <= by;
+}
+
+// Is (px,py) close enough to line annotation a?
+function _nearLine(px, py, a) {
+  const dx = a.x2-a.x1, dy = a.y2-a.y1;
+  const len2 = dx*dx + dy*dy;
+  if (!len2) return Math.hypot(px-a.x1, py-a.y1) < _handleR();
+  const t  = Math.max(0, Math.min(1, ((px-a.x1)*dx + (py-a.y1)*dy) / len2));
+  return Math.hypot(px-(a.x1+t*dx), py-(a.y1+t*dy)) < Math.max(14, IE.canvas.width*0.035);
+}
+
+// Corner handles for a rect — each carries its own pos + opposite fixed corner
+function _rectHandles(a) {
+  const lx = Math.min(a.x, a.x+a.w), rx = Math.max(a.x, a.x+a.w);
+  const ty = Math.min(a.y, a.y+a.h), by = Math.max(a.y, a.y+a.h);
+  return [{x:lx,y:ty,fx:rx,fy:by},{x:rx,y:ty,fx:lx,fy:by},
+          {x:lx,y:by,fx:rx,fy:ty},{x:rx,y:by,fx:lx,fy:ty}];
+}
+
+// Which corner handle was hit? Returns handle obj or null
+function _hitRectHandle(px, py, a) {
+  const r = _handleR();
+  for (const h of _rectHandles(a))
+    if (Math.hypot(px-h.x, py-h.y) < r) return h;
+  return null;
+}
+
+// ── Drawing ───────────────────────────────────────────────────────────────
+
+function _drawRectHandles(ctx, a) {
+  const lx = Math.min(a.x, a.x+a.w), rx = Math.max(a.x, a.x+a.w);
+  const ty = Math.min(a.y, a.y+a.h), by = Math.max(a.y, a.y+a.h);
+  const col = a.color === 'red' ? '#ff4444' : '#44cc44';
+  const r = _handleR();
+  ctx.save();
+  // Dashed selection border
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2;
+  ctx.setLineDash([6,3]); ctx.strokeRect(lx, ty, rx-lx, by-ty); ctx.setLineDash([]);
+  // Corner circles
+  for (const h of _rectHandles(a)) {
+    ctx.beginPath(); ctx.arc(h.x, h.y, r, 0, Math.PI*2);
+    ctx.fillStyle = 'white'; ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function _drawLineHandles(ctx, a) {
+  const col = a.color === 'red' ? '#ff4444' : '#44cc44';
+  const r = _handleR();
+  ctx.save();
+  for (const [hx,hy] of [[a.x1,a.y1],[a.x2,a.y2]]) {
+    ctx.beginPath(); ctx.arc(hx, hy, r, 0, Math.PI*2);
+    ctx.fillStyle = 'white'; ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function editorRedraw() {
+  const c = IE.canvas, ctx = IE.ctx;
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.drawImage(IE.img, 0, 0, c.width, c.height);
+  IE.annotations.forEach(ann => editorDrawOne(ctx, ann, 1, 1));
+  // Selection handles on top
+  if (IE.selected >= 0) {
+    const sel = IE.annotations[IE.selected];
+    if (sel?.type === 'rect') _drawRectHandles(ctx, sel);
+    if (sel?.type === 'line') _drawLineHandles(ctx, sel);
+  }
+  // Live draft while drawing new shape
+  if (IE.drawing && IE._draft) {
+    editorDrawOne(ctx, IE._draft, 1, 1);
+    if (IE._draft.type === 'line' && IE._draft._snap) {
+      ctx.save(); ctx.strokeStyle = 'white'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(IE._draft.x2, IE._draft.y2, 9, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+function editorDrawOne(ctx, ann, sx, sy) {
+  ctx.save();
+  const stroke = ann.color === 'red' ? '#ff2222' : '#22cc22';
+  const lw = Math.max(2, 3 * (sx + sy) / 2);
+  ctx.strokeStyle = stroke; ctx.lineWidth = lw;
+
+  if (ann.type === 'rect') {
+    ctx.fillStyle = ann.color === 'red' ? 'rgba(255,30,30,0.18)' : 'rgba(30,200,30,0.18)';
+    ctx.fillRect(ann.x*sx, ann.y*sy, ann.w*sx, ann.h*sy);
+    ctx.strokeRect(ann.x*sx, ann.y*sy, ann.w*sx, ann.h*sy);
+    // Default label above the box
+    const _label = ann.color === 'red' ? 'Power Supply' : 'BOT';
+    const _bw = Math.abs(ann.w * sx);
+    const _fs = Math.max(10, Math.min(_bw * 0.28, 22 * (sx + sy) / 2));
+    ctx.font = `bold ${Math.round(_fs)}px sans-serif`;
+    ctx.fillStyle = stroke;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    const _topY = Math.min(ann.y, ann.y + ann.h) * sy;  // top edge regardless of draw direction
+    ctx.fillText(_label, (ann.x + ann.w / 2) * sx, _topY - 4 * (sx + sy) / 2);
+
+  } else if (ann.type === 'line') {
+    ctx.beginPath();
+    ctx.moveTo(ann.x1*sx, ann.y1*sy); ctx.lineTo(ann.x2*sx, ann.y2*sy); ctx.stroke();
+    ctx.fillStyle = stroke;
+    const r = lw * 1.4;
+    ctx.beginPath(); ctx.arc(ann.x1*sx, ann.y1*sy, r, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(ann.x2*sx, ann.y2*sy, r, 0, Math.PI*2); ctx.fill();
+
+  } else if (ann.type === 'text') {
+    const x = ann.x*sx, y = ann.y*sy;
+    const fs = Math.max(13, 16*(sx+sy)/2);
+    ctx.font = `bold ${Math.round(fs)}px sans-serif`; ctx.textBaseline = 'top';
+    const tw = ctx.measureText(ann.text).width;
+    const pad = Math.max(4, 5*(sx+sy)/2);
+    ctx.fillStyle = ann.color === 'red' ? 'rgba(180,0,0,0.82)' : 'rgba(0,130,0,0.82)';
+    const bx=x-pad, by=y-pad, bw=tw+pad*2, bh=fs+pad*2;
+    if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, Math.round(fs/3));
+    else ctx.rect(bx, by, bw, bh);
+    ctx.fill();
+    ctx.fillStyle = 'white'; ctx.fillText(ann.text, x, y);
+  }
+  ctx.restore();
+}
+
+// ── Canvas pointer events ─────────────────────────────────────────────────
+
+function _editorPos(e) {
+  const rect = IE.canvas.getBoundingClientRect();
+  const src  = (e.changedTouches && e.changedTouches[0])
+            || (e.touches        && e.touches[0]) || e;
+  return {
+    x: (src.clientX - rect.left) * IE.canvas.width  / rect.width,
+    y: (src.clientY - rect.top)  * IE.canvas.height / rect.height,
+  };
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const c = document.getElementById('img-editor-canvas');
+  c.addEventListener('mousedown',  editorDown);
+  c.addEventListener('mousemove',  editorMove);
+  c.addEventListener('mouseup',    editorUp);
+  c.addEventListener('mouseleave', editorUp);
+  c.addEventListener('touchstart', editorDown, {passive:false});
+  c.addEventListener('touchmove',  editorMove, {passive:false});
+  c.addEventListener('touchend',   editorUp,   {passive:false});
+  document.addEventListener('keydown', ev => {
+    if (document.getElementById('img-editor-modal').style.display === 'none') return;
+    if (ev.key === 'Escape') { editorCancelText(); IE.selected=-1; IE._mode=null; editorRedraw(); }
+    if (ev.key === 'Enter' && document.getElementById('editor-text-bar').style.display !== 'none')
+      editorCommitText();
+  });
+});
+
+function editorDown(e) {
+  e.preventDefault();
+  const p = _editorPos(e);
+
+  // ── Text tool ──────────────────────────────────────────────────────────
+  if (IE.tool === 'text') {
+    IE._textX = p.x; IE._textY = p.y;
+    const inp = document.getElementById('editor-text-val');
+    inp.value = '';
+    inp.style.color = IE.color === 'red' ? '#ff7777' : '#44ee44';
+    document.getElementById('editor-text-bar').style.display = 'flex';
+    setTimeout(() => inp.focus(), 50);
+    return;
+  }
+
+  // ── Rect tool ─────────────────────────────────────────────────────────
+  if (IE.tool === 'rect') {
+    // 1. Corner handle on already-selected rect → resize
+    if (IE.selected >= 0 && IE.annotations[IE.selected]?.type === 'rect') {
+      const h = _hitRectHandle(p.x, p.y, IE.annotations[IE.selected]);
+      if (h) { IE._mode = 'resize-rect'; IE._resizeFixed = {x:h.fx, y:h.fy}; return; }
+      // 2. Inside selected rect → move
+      if (_insideRect(p.x, p.y, IE.annotations[IE.selected])) {
+        const a = IE.annotations[IE.selected];
+        IE._mode = 'move-rect';
+        IE._dragOff = {x: p.x - a.x, y: p.y - a.y};
+        return;
+      }
+    }
+    // 3. Tap on any other rect → select + immediately start moving
+    for (let i = IE.annotations.length-1; i >= 0; i--) {
+      if (IE.annotations[i].type !== 'rect') continue;
+      if (_insideRect(p.x, p.y, IE.annotations[i])) {
+        IE.selected = i;
+        IE._mode = 'move-rect';
+        IE._dragOff = {x: p.x - IE.annotations[i].x, y: p.y - IE.annotations[i].y};
+        editorRedraw(); return;
+      }
+    }
+    // 4. Empty → deselect, draw new rect
+    IE.selected = -1; IE._mode = null;
+    IE.drawing = true; IE.drawStart = p; IE._draft = null;
+    return;
+  }
+
+  // ── Line tool ─────────────────────────────────────────────────────────
+  if (IE.tool === 'line') {
+    const r = _handleR();
+    // 1. Endpoint handle on selected line → drag that endpoint
+    if (IE.selected >= 0 && IE.annotations[IE.selected]?.type === 'line') {
+      const a = IE.annotations[IE.selected];
+      if (Math.hypot(p.x-a.x1, p.y-a.y1) < r) { IE._mode='drag-ep'; IE._epIdx=0; return; }
+      if (Math.hypot(p.x-a.x2, p.y-a.y2) < r) { IE._mode='drag-ep'; IE._epIdx=1; return; }
+      // 2. On line body of selected line → move whole line
+      if (_nearLine(p.x, p.y, a)) {
+        IE._mode = 'move-line';
+        IE._dragOff = {x: p.x - a.x1, y: p.y - a.y1};
+        return;
+      }
+    }
+    // 3. Tap on any other line → select + start moving
+    for (let i = IE.annotations.length-1; i >= 0; i--) {
+      if (IE.annotations[i].type !== 'line') continue;
+      if (_nearLine(p.x, p.y, IE.annotations[i])) {
+        IE.selected = i;
+        IE._mode = 'move-line';
+        IE._dragOff = {x: p.x - IE.annotations[i].x1, y: p.y - IE.annotations[i].y1};
+        editorRedraw(); return;
+      }
+    }
+    // 4. Empty → deselect, draw new line
+    IE.selected = -1; IE._mode = null;
+    IE.drawing = true; IE.drawStart = p; IE._draft = null;
+    return;
+  }
+}
+
+function editorMove(e) {
+  e.preventDefault();
+  const p = _editorPos(e);
+
+  if (IE._mode === 'resize-rect' && IE.selected >= 0) {
+    const a = IE.annotations[IE.selected], f = IE._resizeFixed;
+    a.x = Math.min(f.x, p.x); a.y = Math.min(f.y, p.y);
+    a.w = Math.abs(p.x-f.x);  a.h = Math.abs(p.y-f.y);
+    editorRedraw(); return;
+  }
+  if (IE._mode === 'move-rect' && IE.selected >= 0) {
+    const a = IE.annotations[IE.selected];
+    a.x = p.x - IE._dragOff.x; a.y = p.y - IE._dragOff.y;
+    editorRedraw(); return;
+  }
+  if (IE._mode === 'move-line' && IE.selected >= 0) {
+    const a = IE.annotations[IE.selected];
+    const dx = a.x2-a.x1, dy = a.y2-a.y1;
+    a.x1 = p.x - IE._dragOff.x; a.y1 = p.y - IE._dragOff.y;
+    a.x2 = a.x1+dx; a.y2 = a.y1+dy;
+    editorRedraw(); return;
+  }
+  if (IE._mode === 'drag-ep' && IE.selected >= 0) {
+    const a = IE.annotations[IE.selected];
+    const snap = _snapPt(p.x, p.y, IE.selected);
+    const ex = snap ? snap.x : p.x, ey = snap ? snap.y : p.y;
+    if (IE._epIdx === 0) { a.x1 = ex; a.y1 = ey; }
+    else                 { a.x2 = ex; a.y2 = ey; }
+    editorRedraw(); return;
+  }
+
+  if (!IE.drawing) return;
+  const s = IE.drawStart;
+  if (IE.tool === 'line') {
+    const snap = _snapPt(p.x, p.y, -1);
+    IE._draft = { type:'line', color:IE.color, x1:s.x, y1:s.y,
+                  x2:snap?snap.x:p.x, y2:snap?snap.y:p.y, _snap:!!snap };
+  } else {
+    IE._draft = { type:'rect', color:IE.color, x:s.x, y:s.y, w:p.x-s.x, h:p.y-s.y };
+  }
+  editorRedraw();
+}
+
+function editorUp(e) {
+  if (e) e.preventDefault();
+  // End any manipulation
+  if (IE._mode) { IE._mode = null; IE._resizeFixed = null; editorRedraw(); return; }
+  if (!IE.drawing) return;
+  IE.drawing = false;
+  if (IE._draft) {
+    const d = IE._draft;
+    let ok = false;
+    if (d.type === 'line') {
+      const snap1 = _snapPt(d.x1, d.y1, -1);
+      if (snap1) { d.x1 = snap1.x; d.y1 = snap1.y; }
+      delete d._snap;
+      ok = Math.hypot(d.x2-d.x1, d.y2-d.y1) > 0.01;
+    } else {
+      ok = Math.abs(d.w) > 0.005 && Math.abs(d.h) > 0.005;
+    }
+    if (ok) IE.annotations.push(d);
+    IE._draft = null;
+  }
+  editorRedraw();
+}
+
+// ── Docking delete ────────────────────────────────────────────────────────
+
+const activeDocks = {}; // towerIdx -> Set of active docks
+
+function deleteDock(dock, towerIdx) {
+  if (!activeDocks[towerIdx]) activeDocks[towerIdx] = new Set(['d1','d2']);
+  if (activeDocks[towerIdx].size <= 1) return; // keep at least one
+  activeDocks[towerIdx].delete(dock);
+  document.getElementById(`dock-${dock}-${towerIdx}`)?.remove();
+
+  // Update remaining dock's title and the hidden field
+  const remaining = [...activeDocks[towerIdx]][0];
+  document.querySelector(`.dock-title-${remaining}-${towerIdx}`).textContent = 'Docking';
+  document.getElementById(`active-docks-${towerIdx}`).value = [...activeDocks[towerIdx]].join(',');
+}
+
+// ── Duplicate tower ───────────────────────────────────────────────────────
+
+function duplicateTower(sourceIdx) {
+  const newId = Math.max(...activeTowers) + 1;
+  activeTowers.push(newId);
+  tabs.insertBefore(makeTab(newId), addBtn);
+  container.insertAdjacentHTML('beforeend', makeTowerHTML(newId));
+
+  const srcSec = document.getElementById(`tower-section-${sourceIdx}`);
+  const dstSec = document.getElementById(`tower-section-${newId}`);
+
+  // Match d1 and d2 change row counts
+  for (const dock of ['d1', 'd2']) {
+    const defaultCount = dock === 'd1' ? 2 : 3;
+    const srcCount = parseInt(srcSec.querySelector(`#${dock}-change-count-${sourceIdx}`).value);
+    for (let i = defaultCount; i < srcCount; i++) addChangeRow(dock, newId);
+  }
+
+  // Copy text, date, select, textarea
+  srcSec.querySelectorAll('input[type=text], input[type=date], select, textarea').forEach(src => {
+    if (!src.name) return;
+    const dstName = src.name.replace(new RegExp(`^tower_${sourceIdx}_`), `tower_${newId}_`);
+    const dst = dstSec.querySelector(`[name="${dstName}"]`);
+    if (dst) dst.value = src.value;
+  });
+
+  // Copy checkboxes
+  srcSec.querySelectorAll('input[type=checkbox]').forEach(src => {
+    if (!src.name) return;
+    const dstName = src.name.replace(new RegExp(`^tower_${sourceIdx}_`), `tower_${newId}_`);
+    const dstMatches = dstSec.querySelectorAll(`input[type=checkbox][name="${dstName}"][value="${src.value}"]`);
+    dstMatches.forEach(dst => { dst.checked = src.checked; });
+  });
+
+  activateTab(newId);
+  updateCountLabel();
+}
+
+// ── Tab / tower management ────────────────────────────────────────────────
+
+function makeTab(idx) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'tower-tab';
+  btn.dataset.tower = idx;
+  btn.innerHTML = `Tower ${idx} <span class="del-btn" data-del="${idx}" title="Delete">✕</span>`;
+  return btn;
+}
+
+function activateTab(idx) {
+  document.querySelectorAll('.tower-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tower-section').forEach(s => s.classList.remove('active'));
+  const tab = document.querySelector(`.tower-tab[data-tower="${idx}"]`);
+  const sec = document.getElementById(`tower-section-${idx}`);
+  if (tab) tab.classList.add('active');
+  if (sec)  sec.classList.add('active');
+}
+
+function updateCountLabel() {
+  const n = activeTowers.length;
+  document.getElementById('tower-count-label').innerHTML =
+    `<strong>${n} tower${n !== 1 ? 's' : ''}</strong> in this report`;
+  document.getElementById('active_towers').value = activeTowers.join(',');
+  document.getElementById('tower_count').value = n;
+}
+
+function deleteTower(idx) {
+  if (activeTowers.length <= 1) { alert('At least one tower is required.'); return; }
+  const pos = activeTowers.indexOf(idx);
+  activeTowers = activeTowers.filter(t => t !== idx);
+  document.querySelector(`.tower-tab[data-tower="${idx}"]`)?.remove();
+  document.getElementById(`tower-section-${idx}`)?.remove();
+  activateTab(activeTowers[Math.min(pos, activeTowers.length - 1)]);
+  updateCountLabel();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+
+const container = document.getElementById('towers-container');
+const tabs      = document.getElementById('towerTabs');
+const addBtn    = document.getElementById('addTowerBtn');
+
+for (const i of activeTowers) {
+  activeDocks[i] = new Set(['d1','d2']);
+  imageCounters[i] = 4; // starts after the 4 default slots
+  tabs.insertBefore(makeTab(i), addBtn);
+  container.insertAdjacentHTML('beforeend', makeTowerHTML(i));
+}
+activateTab(1);
+updateCountLabel();
+
+tabs.addEventListener('click', e => {
+  const delBtn = e.target.closest('[data-del]');
+  if (delBtn) { e.stopPropagation(); deleteTower(parseInt(delBtn.dataset.del)); return; }
+  const tab = e.target.closest('[data-tower]');
+  if (tab) activateTab(parseInt(tab.dataset.tower));
+});
+
+addBtn.addEventListener('click', () => {
+  const newId = Math.max(...activeTowers) + 1;
+  activeTowers.push(newId);
+  activeDocks[newId] = new Set(['d1','d2']);
+  imageCounters[newId] = 4;
+  tabs.insertBefore(makeTab(newId), addBtn);
+  container.insertAdjacentHTML('beforeend', makeTowerHTML(newId));
+  activateTab(newId);
+  updateCountLabel();
+});
+
+// ── Form validation ───────────────────────────────────────────────────────
+
+function clearErrors() {
+  document.querySelectorAll('.field-error').forEach(el => el.classList.remove('field-error'));
+  const b = document.getElementById('val-banner');
+  b.style.display = 'none'; b.textContent = '';
+}
+
+function showError(el, msg) {
+  // highlight the field itself
+  el.classList.add('field-error');
+  // highlight the containing section-box or card
+  const box = el.closest('.section-box') || el.closest('.card');
+  if (box) box.classList.add('field-error');
+  // show banner
+  const b = document.getElementById('val-banner');
+  b.textContent = '⚠ ' + msg;
+  b.style.display = 'block';
+  setTimeout(() => { b.style.display = 'none'; }, 4000);
+  // scroll into view
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => { try { el.focus(); } catch(e){} }, 400);
+}
+
+document.getElementById('reportForm').addEventListener('submit', function(e) {
+  clearErrors();
+
+  // ── Header ──────────────────────────────────────────────────────────────
+  const headerChecks = [
+    { name: 'area',      label: 'Area' },
+    { name: 'date',      label: 'Date' },
+    { name: 'assessor',  label: 'Assessor Name' },
+  ];
+  for (const { name, label } of headerChecks) {
+    const el = document.querySelector(`[name="${name}"]`);
+    if (el && !el.value.trim()) {
+      e.preventDefault();
+      showError(el, `Report Header: "${label}" is required`);
+      return;
+    }
+  }
+
+  // ── Per tower ────────────────────────────────────────────────────────────
+  for (const idx of activeTowers) {
+    // Tower name
+    const nameEl = document.querySelector(`[name="tower_${idx}_name"]`);
+    if (nameEl && !nameEl.value.trim()) {
+      e.preventDefault(); activateTab(idx);
+      showError(nameEl, `Tower ${idx}: Enter the tower name`);
+      return;
+    }
+
+    // Checklist — all Done selects must be chosen
+    for (let i = 0; i < 6; i++) {
+      const sel = document.querySelector(`[name="tower_${idx}_check_${i}_done"]`);
+      if (sel && !sel.value) {
+        e.preventDefault(); activateTab(idx);
+        showError(sel, `Tower ${idx} Checklist: Select a status for every item`);
+        return;
+      }
+    }
+
+    // Building overview
+    for (const field of ['total_floors', 'op_floors']) {
+      const el = document.querySelector(`[name="tower_${idx}_${field}"]`);
+      if (el && !el.value.trim()) {
+        e.preventDefault(); activateTab(idx);
+        showError(el, `Tower ${idx} Building Overview: "${el.closest('div').querySelector('label')?.textContent || field}" is required`);
+        return;
+      }
+    }
+
+    // Docking — check each active dock
+    const docks = activeDocks[idx] ? [...activeDocks[idx]] : ['d1','d2'];
+    for (const dock of docks) {
+      const dockLabel = dock === 'd1' ? 'Docking Option 1' : 'Docking Option 2';
+      for (const field of ['access', 'width', 'depth', 'provider']) {
+        const el = document.querySelector(`[name="tower_${idx}_${dock}_${field}"]`);
+        if (el && !el.value.trim()) {
+          e.preventDefault(); activateTab(idx);
+          showError(el, `Tower ${idx} ${dockLabel}: Fill in all required fields`);
+          return;
+        }
+      }
+    }
+  }
+});
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/static/sw.js');
+  }
+</script>
+
+<!-- ── Image Annotation Editor Modal ──────────────────────────────────── -->
+<div id="img-editor-modal" style="display:none">
+
+  <!-- Toolbar -->
+  <div class="img-editor-toolbar">
+    <button class="tool-btn active" data-tool="rect" onclick="editorSetTool(this,'rect')">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="2" width="20" height="20" rx="3"/></svg>
+      Rect
+    </button>
+    <button class="tool-btn" data-tool="line" onclick="editorSetTool(this,'line')">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="21" x2="21" y2="3"/></svg>
+      Line
+    </button>
+    <button class="tool-btn" data-tool="text" onclick="editorSetTool(this,'text')">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 7V4h16v3"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="8" y1="20" x2="16" y2="20"/></svg>
+      Text
+    </button>
+
+    <div class="toolbar-sep"></div>
+
+    <button class="color-btn active" data-color="red"
+            style="background:radial-gradient(circle at 38% 38%, #ff7777, #cc0000)"
+            onclick="editorSetColor(this,'red')" title="Red"></button>
+    <button class="color-btn" data-color="green"
+            style="background:radial-gradient(circle at 38% 38%, #77ff77, #009900)"
+            onclick="editorSetColor(this,'green')" title="Green"></button>
+
+    <div class="toolbar-sep"></div>
+
+    <button class="tool-btn" onclick="editorClearAll()" style="color:#f87171; padding:0 14px;">
+      Clear
+    </button>
+  </div>
+
+  <!-- Canvas area -->
+  <div class="img-editor-canvas-wrap">
+    <canvas id="img-editor-canvas"></canvas>
+  </div>
+
+  <!-- Text input bar (visible when text tool is active and canvas tapped) -->
+  <div id="editor-text-bar">
+    <input id="editor-text-val" type="text" placeholder="Type label…" maxlength="80"
+           onkeydown="if(event.key==='Enter'){event.preventDefault();editorCommitText();}">
+    <button class="etxt-add"    onclick="editorCommitText()">Add</button>
+    <button class="etxt-cancel" onclick="editorCancelText()">✕</button>
+  </div>
+
+  <!-- Footer -->
+  <div class="img-editor-footer">
+    <button class="btn btn-secondary" onclick="editorCancel()">Cancel</button>
+    <button class="btn btn-primary"   onclick="editorDone()">Done ✓</button>
+  </div>
+
+</div>
+</body>
+</html>
