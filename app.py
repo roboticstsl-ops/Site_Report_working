@@ -37,8 +37,17 @@ CHECKLIST_ITEMS = [
 
 OWNERS = ["Building", "Client", "TII", "Vendor", "TBD"]
 
-TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
-TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '').strip()
+TELEGRAM_BOT_TOKEN = (
+    os.environ.get('TELEGRAM_BOT_TOKEN')
+    or os.environ.get('TELEGRAM_TOKEN')
+    or os.environ.get('telegram_token')
+    or ''
+).strip()
+TELEGRAM_CHAT_ID = (
+    os.environ.get('TELEGRAM_CHAT_ID')
+    or os.environ.get('telegram_chat_id')
+    or ''
+).strip()
 
 
 # ── Checkbox formatters ────────────────────────────────────────────────────
