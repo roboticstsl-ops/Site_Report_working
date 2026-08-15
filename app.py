@@ -523,6 +523,29 @@ def build_document(header, towers):
 
 # ── PDF conversion & image quality ────────────────────────────────────────
 
+MAX_IMG_PX = 1600
+
+
+def shrink_image(img_bytes: bytes) -> bytes:
+    """Cap an uploaded photo's size. Phone photos are ~12MP; at that size a handful
+    of them is enough to OOM a 512MB box during the LibreOffice PDF conversion.
+    1600px is well beyond what the report's image slots render at."""
+    from PIL import Image
+    try:
+        pil = Image.open(io.BytesIO(img_bytes))
+        if max(pil.size) <= MAX_IMG_PX and img_bytes[:3] == b'\xff\xd8\xff':
+            return img_bytes
+        pil.thumbnail((MAX_IMG_PX, MAX_IMG_PX))
+        if pil.mode != 'RGB':
+            pil = pil.convert('RGB')
+        buf = io.BytesIO()
+        pil.save(buf, format='JPEG', quality=88)
+        return buf.getvalue()
+    except Exception as exc:
+        app.logger.warning('image shrink failed, using original: %s', exc)
+        return img_bytes
+
+
 def docx_to_pdf(docx_bytes: bytes) -> bytes:
     with tempfile.TemporaryDirectory() as tmp:
         in_path  = os.path.join(tmp, 'report.docx')
@@ -530,9 +553,9 @@ def docx_to_pdf(docx_bytes: bytes) -> bytes:
         with open(in_path, 'wb') as f:
             f.write(docx_bytes)
         subprocess.run(
-            ['libreoffice', '--headless', '--convert-to', 'pdf',
-             '--outdir', tmp, in_path],
-            check=True, capture_output=True
+            ['libreoffice', '-env:UserInstallation=file://' + tmp + '/lo',
+             '--headless', '--convert-to', 'pdf', '--outdir', tmp, in_path],
+            check=True, capture_output=True, timeout=240
         )
         with open(out_path, 'rb') as f:
             return f.read()
@@ -667,7 +690,11 @@ def parse_tower(form, files, tower_idx):
         if not data_uri:
             annotated_uri = form.get(f'tower_{t}_img_{j}_data_uri', '').strip()
             if annotated_uri and annotated_uri.startswith('data:'):
-                data_uri = annotated_uri
+                try:
+                    raw = base64.b64decode(annotated_uri.split(',', 1)[1])
+                    data_uri = f"data:image/jpeg;base64,{base64.b64encode(shrink_image(raw)).decode()}"
+                except Exception:
+                    data_uri = annotated_uri
 
         # 3. Fallback: raw file upload
         if not data_uri:
@@ -675,8 +702,7 @@ def parse_tower(form, files, tower_idx):
             if file_storage and file_storage.filename:
                 data = file_storage.read()
                 if data:
-                    mime = file_storage.mimetype or 'image/jpeg'
-                    data_uri = f"data:{mime};base64,{base64.b64encode(data).decode()}"
+                    data_uri = f"data:image/jpeg;base64,{base64.b64encode(shrink_image(data)).decode()}"
 
         tower['images'].append({'caption': caption, 'data_uri': data_uri})
 
@@ -698,6 +724,7 @@ def img_upload():
         img_bytes  = base64.b64decode(b64part)
     except Exception:
         return jsonify({'error': 'decode_failed'}), 400
+    img_bytes = shrink_image(img_bytes)
     token    = str(uuid.uuid4())
     img_path = os.path.join(UPLOADS_DIR, f'{token}.jpg')
     with open(img_path, 'wb') as f:
