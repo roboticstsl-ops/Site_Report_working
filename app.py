@@ -2,10 +2,12 @@ import os
 import copy
 import re
 import base64
+import hashlib
 import io
 import subprocess
 import tempfile
 import uuid
+import zipfile
 from datetime import datetime
 
 import fitz  # PyMuPDF
@@ -594,6 +596,23 @@ def telegram_test():
 def _replace_pdf_images_hq(pdf_bytes: bytes, orig_image_list: list) -> bytes:
     if not any(b is not None for b in orig_image_list):
         return pdf_bytes
+
+    # The PDF has one xref per *distinct* picture: empty slots contribute none,
+    # and python-docx collapses byte-identical pictures — which duplicated towers
+    # produce constantly — into a single media part. Line the originals up the
+    # same way, or every image after the first repeat gets swapped for the wrong one.
+    ordered_origs = []
+    seen_digests = set()
+    for blob in orig_image_list:
+        if blob is None:
+            continue
+        digest = hashlib.sha1(blob).hexdigest()
+        if digest in seen_digests:
+            continue
+        seen_digests.add(digest)
+        ordered_origs.append(blob)
+    orig_image_list = ordered_origs
+
     doc = fitz.open(stream=pdf_bytes, filetype='pdf')
     seen_xrefs = []
     xref_to_page_num = {}
@@ -732,6 +751,44 @@ def img_upload():
     return jsonify({'token': token})
 
 
+def _zip_response(files: dict, download_name: str):
+    """Bundle {filename: bytes} into one download — one tap on a phone, not several."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+        for name, blob in files.items():
+            z.writestr(name, blob)
+    buf.seek(0)
+    return send_file(buf, mimetype='application/zip',
+                     as_attachment=True, download_name=download_name)
+
+
+@app.route('/api/img_zip', methods=['POST'])
+def img_zip():
+    """Download the images of one tower as a single zip."""
+    data   = request.get_json(force=True, silent=True) or {}
+    prefix = re.sub(r'[^A-Za-z0-9_-]', '_', str(data.get('prefix', 'images')))[:50] or 'images'
+    out    = {}
+    for i, item in enumerate(data.get('images', [])[:100]):
+        token   = str(item.get('token', ''))
+        caption = re.sub(r'[^A-Za-z0-9 _-]', '', str(item.get('caption', '')))[:40].strip()
+        name    = f"{i + 1:02d}_{caption or 'image'}.jpg"
+        if re.fullmatch(r'[0-9a-f-]{36}', token):
+            path = os.path.join(UPLOADS_DIR, f'{token}.jpg')
+            if os.path.exists(path):
+                with open(path, 'rb') as f:
+                    out[name] = f.read()
+                continue
+        uri = str(item.get('data_uri', ''))
+        if uri.startswith('data:'):
+            try:
+                out[name] = base64.b64decode(uri.split(',', 1)[1])
+            except Exception:
+                pass
+    if not out:
+        return jsonify({'error': 'no_images'}), 404
+    return _zip_response(out, f'{prefix}_images.zip')
+
+
 @app.route('/api/img/<token>')
 def img_fetch(token):
     """Serve a previously uploaded image so a restored draft can show its preview."""
@@ -792,6 +849,12 @@ def generate():
 
     docx_name = f"{assessor_slug}_{tower_slug}_{timestamp}.docx"
     caption = f"Site assessment report\nAssessor: {assessor_name}\nTower(s): {', '.join(t['name'] for t in towers)}"
+
+    # 'local' hands both files straight back to the device and touches nothing else.
+    if form.get('output') == 'local':
+        return _zip_response({docx_name: docx_bytes, save_name: pdf_bytes},
+                             f"{assessor_slug}_{tower_slug}_{timestamp}.zip")
+
     sent_docx = send_telegram_document(docx_bytes, docx_name, caption)
     sent_pdf  = send_telegram_document(pdf_bytes, save_name, caption)
 
@@ -812,12 +875,10 @@ def generate():
     with open(os.path.join(REPORTS_DIR, 'submissions.log'), 'a') as f:
         f.write(log_line)
 
-    return send_file(
-        io.BytesIO(pdf_bytes),
-        mimetype='application/pdf',
-        as_attachment=True,
-        download_name='DBot_Site_Assessment.pdf'
-    )
+    # Telegram already has both files, so the browser only needs the verdict —
+    # streaming a several-MB PDF back over a phone connection is what made long
+    # generations look like a dropped connection.
+    return jsonify({'sent': sent_docx and sent_pdf, 'pdf': save_name, 'docx': docx_name})
 
 
 if __name__ == '__main__':

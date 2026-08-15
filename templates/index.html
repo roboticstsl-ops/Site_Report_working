@@ -514,10 +514,15 @@
     <div id="towers-container"></div>
 
     <div class="actions-bar">
-      <button type="submit" class="btn btn-primary">
-        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
-        Generate PDF
+      <button type="submit" class="btn btn-primary" data-output="telegram">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        Generate &amp; Send to Telegram
       </button>
+      <button type="submit" class="btn btn-secondary" data-output="local">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+        Generate &amp; Save to Device
+      </button>
+      <input type="hidden" name="output" id="output_mode" value="telegram">
       <div class="tower-info" id="tower-count-label"><strong>1 tower</strong> in this report</div>
     </div>
   </form>
@@ -742,6 +747,8 @@ function makeTowerHTML(idx) {
         </div>
         <button type="button" class="btn btn-secondary btn-sm" style="margin-top:10px"
                 onclick="addImageSlot(${idx})">+ Add Image</button>
+        <button type="button" class="btn btn-secondary btn-sm" style="margin-top:10px"
+                onclick="saveTowerImages(${idx}, this)">⬇ Save Images to Device</button>
         <input type="hidden" name="tower_${idx}_img_count" id="img-count-${idx}" value="4">
         </div><!-- end images section-box -->
 
@@ -1485,9 +1492,7 @@ function deleteDock(dock, towerIdx) {
 
 function duplicateTower(sourceIdx) {
   const newId = Math.max(...activeTowers) + 1;
-  activeTowers.push(newId);
-  tabs.insertBefore(makeTab(newId), addBtn);
-  container.insertAdjacentHTML('beforeend', makeTowerHTML(newId));
+  addTower(newId);  // registers activeDocks/imageCounters — copying by hand skipped those
 
   const srcSec = document.getElementById(`tower-section-${sourceIdx}`);
   const dstSec = document.getElementById(`tower-section-${newId}`);
@@ -1817,6 +1822,108 @@ document.getElementById('reportForm').addEventListener('submit', function(e) {
     }
   }
 });
+
+// ── Submit: two outputs, no page navigation ───────────────────────────────
+// Generation takes a minute or more. A normal form POST leaves the browser on a
+// blank pending page, which phones report as "no internet"; fetch keeps the page
+// alive and lets us show progress instead.
+document.querySelectorAll('button[type="submit"][data-output]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.getElementById('output_mode').value = btn.dataset.output;
+  });
+});
+
+function showProgress(text) {
+  let el = document.getElementById('gen-progress');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'gen-progress';
+    el.style.cssText = 'position:fixed;inset:0;z-index:20000;background:rgba(15,23,42,0.92);' +
+      'color:#fff;display:flex;flex-direction:column;gap:10px;align-items:center;' +
+      'justify-content:center;text-align:center;padding:24px;font-size:1rem';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = text;
+  return el;
+}
+function hideProgress() { document.getElementById('gen-progress')?.remove(); }
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+document.getElementById('reportForm').addEventListener('submit', async function(e) {
+  if (e.defaultPrevented) return;   // validation above already rejected it
+  e.preventDefault();
+
+  const mode = document.getElementById('output_mode').value;
+  const started = Date.now();
+  const tick = setInterval(() => {
+    const s = Math.round((Date.now() - started) / 1000);
+    showProgress(`<div style="font-size:2rem">⏳</div>Building the report…<br>` +
+      `<small>${s}s — keep this page open, it can take a couple of minutes</small>`);
+  }, 500);
+
+  try {
+    const res = await fetch('/generate', { method: 'POST', body: new FormData(this) });
+    if (!res.ok) throw new Error(`server returned ${res.status}`);
+    clearInterval(tick);
+    if (mode === 'local') {
+      const blob = await res.blob();
+      const match = /filename="?([^"]+)"?/.exec(res.headers.get('Content-Disposition') || '');
+      downloadBlob(blob, match ? match[1] : 'site_report.zip');
+      showProgress('<div style="font-size:2rem">✅</div>Saved to your device.<br><small>Check your downloads.</small>');
+    } else {
+      const json = await res.json();
+      showProgress(json.sent
+        ? '<div style="font-size:2rem">✅</div>Sent to Telegram.<br><small>Both the PDF and the Word file are in the chat.</small>'
+        : '<div style="font-size:2rem">⚠️</div>Report built, but Telegram rejected it.<br><small>A copy was kept on the server. Try "Save to Device".</small>');
+    }
+  } catch (err) {
+    clearInterval(tick);
+    showProgress(`<div style="font-size:2rem">⚠️</div>Generation failed.<br><small>${err.message}</small><br>` +
+      `<small>Your draft is saved — close this and try again.</small>`);
+  }
+  const close = document.createElement('button');
+  close.textContent = 'Close';
+  close.className = 'btn btn-secondary';
+  close.onclick = hideProgress;
+  document.getElementById('gen-progress').appendChild(close);
+});
+
+// ── Save one tower's images to the device ─────────────────────────────────
+async function saveTowerImages(towerIdx, btn) {
+  const images = [...document.querySelectorAll(`#image-slots-${towerIdx} .image-slot`)]
+    .map(slot => ({
+      token:    slot.querySelector('[name$="_token"]')?.value || '',
+      data_uri: slot.querySelector('[name$="_data_uri"]')?.value || '',
+      caption:  slot.querySelector('[name$="_caption"]')?.value || '',
+    }))
+    .filter(img => img.token || img.data_uri);
+
+  if (!images.length) { alert('No images in this tower yet.'); return; }
+
+  const label = btn.innerText;
+  btn.disabled = true; btn.innerText = 'Preparing…';
+  try {
+    const prefix = document.querySelector(`[name="tower_${towerIdx}_name"]`)?.value || `tower_${towerIdx}`;
+    const res = await fetch('/api/img_zip', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ prefix, images }),
+    });
+    if (!res.ok) throw new Error(`server returned ${res.status}`);
+    downloadBlob(await res.blob(), `${prefix.replace(/[^A-Za-z0-9_-]/g, '_')}_images.zip`);
+  } catch (err) {
+    alert('Could not save the images: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.innerText = label;
+  }
+}
 </script>
 <script>
   if ('serviceWorker' in navigator) {
