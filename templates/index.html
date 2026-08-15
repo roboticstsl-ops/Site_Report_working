@@ -874,6 +874,7 @@ async function _uploadImage(slot, dataUri) {
     console.warn('img pre-upload failed, falling back to inline data_uri', err);
   } finally {
     _setPendingUploads(_pendingUploads - 1);
+    if (typeof saveDraft === 'function') saveDraft();  // capture the new token now
   }
 }
 
@@ -1660,16 +1661,29 @@ function draftSnapshot() {
   return { meta, fields, saved: Date.now() };
 }
 
-let _saveTimer;
+let _saveTimer, _lastSaved = '';
+function writeDraft() {
+  try {
+    const snap = draftSnapshot();
+    const json = JSON.stringify(snap);
+    // The timestamp changes every call; compare the rest so an idle page stops writing.
+    const body = JSON.stringify({ meta: snap.meta, fields: snap.fields });
+    if (body === _lastSaved) return;
+    _lastSaved = body;
+    localStorage.setItem(DRAFT_KEY, json);
+  } catch (e) { console.warn('draft save failed', e); }
+}
 function saveDraft() {
   clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(() => {
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draftSnapshot())); }
-    catch (e) { console.warn('draft save failed', e); }
-  }, 600);
+  _saveTimer = setTimeout(writeDraft, 600);
 }
 form.addEventListener('input',  saveDraft);
 form.addEventListener('change', saveDraft);
+// Upload tokens, added towers and added image slots are all set from script, and
+// assigning a value fires no input event — polling is what actually catches them.
+setInterval(writeDraft, 3000);
+window.addEventListener('pagehide', writeDraft);
+document.addEventListener('visibilitychange', () => { if (document.hidden) writeDraft(); });
 
 function restoreDraft() {
   let draft;
@@ -1693,7 +1707,8 @@ function restoreDraft() {
   }
 
   for (const [name, value] of Object.entries(fields)) {
-    form.querySelectorAll(`[name="${CSS.escape(name)}"]`).forEach(el => {
+    if (!/^[A-Za-z0-9_]+$/.test(name)) continue;   // every field name looks like this
+    form.querySelectorAll(`[name="${name}"]`).forEach(el => {
       if (el.type === 'checkbox' || el.type === 'radio') el.checked = value.includes(el.value);
       else el.value = value;
     });
