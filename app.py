@@ -1,5 +1,6 @@
 import os
 import copy
+import re
 import base64
 import io
 import subprocess
@@ -537,10 +538,12 @@ def docx_to_pdf(docx_bytes: bytes) -> bytes:
             return f.read()
 
 
-def send_telegram_document(file_bytes: bytes, filename: str, caption: str = ''):
-    """Send a generated report file to Telegram when bot settings are configured."""
+def send_telegram_document(file_bytes: bytes, filename: str, caption: str = '') -> bool:
+    """Send a generated report file to Telegram. Returns True only if Telegram accepted it."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return
+        app.logger.warning('Telegram not configured (token=%s chat=%s)',
+                           bool(TELEGRAM_BOT_TOKEN), bool(TELEGRAM_CHAT_ID))
+        return False
 
     url = f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendDocument'
     files = {'document': (filename, io.BytesIO(file_bytes))}
@@ -549,10 +552,20 @@ def send_telegram_document(file_bytes: bytes, filename: str, caption: str = ''):
         data['caption'] = caption[:1024]
 
     try:
-        resp = requests.post(url, data=data, files=files, timeout=30)
+        resp = requests.post(url, data=data, files=files, timeout=60)
+        app.logger.warning('Telegram %s -> %s %s', filename, resp.status_code, resp.text[:300])
         resp.raise_for_status()
+        return True
     except Exception as exc:
         app.logger.warning('Telegram send failed for %s: %s', filename, exc)
+        return False
+
+
+@app.route('/telegram-test')
+def telegram_test():
+    """Diagnostic: proves env vars + outbound network work on the deployed box."""
+    send_telegram_document(b'hello', 'test.txt', 'telegram-test')
+    return {'token_set': bool(TELEGRAM_BOT_TOKEN), 'chat_id': TELEGRAM_CHAT_ID or None}
 
 
 def _replace_pdf_images_hq(pdf_bytes: bytes, orig_image_list: list) -> bytes:
@@ -692,6 +705,17 @@ def img_upload():
     return jsonify({'token': token})
 
 
+@app.route('/api/img/<token>')
+def img_fetch(token):
+    """Serve a previously uploaded image so a restored draft can show its preview."""
+    if not re.fullmatch(r'[0-9a-f-]{36}', token):
+        return '', 404
+    path = os.path.join(UPLOADS_DIR, f'{token}.jpg')
+    if not os.path.exists(path):
+        return '', 404
+    return send_file(path, mimetype='image/jpeg')
+
+
 @app.route('/')
 def index():
     return render_template('index.html', checklist_items=CHECKLIST_ITEMS, owners=OWNERS)
@@ -738,13 +762,17 @@ def generate():
     tower_slug     = ''.join(c if c.isalnum() or c in '-_' else '_' for c in first_tower)[:50]
     assessor_slug  = ''.join(c if c.isalnum() or c in '-_' else '_' for c in assessor_name)[:30]
     save_name      = f"{assessor_slug}_{tower_slug}_{timestamp}.pdf"
-    with open(os.path.join(REPORTS_DIR, save_name), 'wb') as f:
-        f.write(pdf_bytes)
 
     docx_name = f"{assessor_slug}_{tower_slug}_{timestamp}.docx"
     caption = f"Site assessment report\nAssessor: {assessor_name}\nTower(s): {', '.join(t['name'] for t in towers)}"
-    send_telegram_document(docx_bytes, docx_name, caption)
-    send_telegram_document(pdf_bytes, save_name, caption)
+    sent_docx = send_telegram_document(docx_bytes, docx_name, caption)
+    sent_pdf  = send_telegram_document(pdf_bytes, save_name, caption)
+
+    # Telegram is the archive. Only keep a copy on the server if it did not get there.
+    for ok, name, blob in ((sent_docx, docx_name, docx_bytes), (sent_pdf, save_name, pdf_bytes)):
+        if not ok:
+            with open(os.path.join(REPORTS_DIR, name), 'wb') as f:
+                f.write(blob)
 
     # Log submission details
     submitter_ip = request.headers.get('X-Forwarded-For', request.remote_addr or 'unknown')

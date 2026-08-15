@@ -1579,8 +1579,7 @@ tabs.addEventListener('click', e => {
   if (tab) activateTab(parseInt(tab.dataset.tower));
 });
 
-addBtn.addEventListener('click', () => {
-  const newId = Math.max(...activeTowers) + 1;
+function addTower(newId) {
   activeTowers.push(newId);
   activeDocks[newId] = new Set(['d1','d2']);
   imageCounters[newId] = 4;
@@ -1588,7 +1587,119 @@ addBtn.addEventListener('click', () => {
   container.insertAdjacentHTML('beforeend', makeTowerHTML(newId));
   activateTab(newId);
   updateCountLabel();
-});
+}
+
+addBtn.addEventListener('click', () => addTower(Math.max(...activeTowers) + 1));
+
+// ── Draft autosave ────────────────────────────────────────────────────────
+// Kept in localStorage, not on the server: the draft survives a crashed page,
+// a closed tab, a dead server and a Render restart alike. One draft only —
+// the last one, restored automatically on load.
+// ponytail: annotated images are restored via their uploaded token, so a photo
+// picked while the upload was failing (data_uri fallback) is not restored — it
+// would need megabytes of base64 in localStorage. Re-pick that photo, or move
+// drafts server-side if that becomes common.
+const DRAFT_KEY = 'dbot_draft_v1';
+const form = document.getElementById('reportForm');
+
+function draftSnapshot() {
+  const fields = {};
+  form.querySelectorAll('input, select, textarea').forEach(el => {
+    if (!el.name || el.type === 'file' || el.name.endsWith('_data_uri')) return;
+    if (el.type === 'checkbox' || el.type === 'radio') {
+      if (el.checked) (fields[el.name] = fields[el.name] || []).push(el.value);
+    } else if (el.value) {
+      fields[el.name] = el.value;
+    }
+  });
+
+  const meta = { towers: [...activeTowers], docks: {}, imgSlots: {}, changeRows: {} };
+  for (const i of activeTowers) {
+    meta.docks[i]    = activeDocks[i] ? [...activeDocks[i]] : ['d1','d2'];
+    meta.imgSlots[i] = document.querySelectorAll(`#image-slots-${i} .image-slot`).length;
+    meta.changeRows[i] = {};
+    for (const d of ['d1','d2']) {
+      const tb = document.getElementById(`${d}-changes-body-${i}`);
+      if (tb) meta.changeRows[i][d] = tb.querySelectorAll('tr').length;
+    }
+  }
+  return { meta, fields, saved: Date.now() };
+}
+
+let _saveTimer;
+function saveDraft() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draftSnapshot())); }
+    catch (e) { console.warn('draft save failed', e); }
+  }, 600);
+}
+form.addEventListener('input',  saveDraft);
+form.addEventListener('change', saveDraft);
+
+function restoreDraft() {
+  let draft;
+  try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch (e) { return; }
+  if (!draft || !Object.keys(draft.fields || {}).length) return;
+  const { meta, fields } = draft;
+
+  // Rebuild the structure first, so every saved field has somewhere to land
+  for (const i of meta.towers) if (!activeTowers.includes(i)) addTower(i);
+  for (const i of [...activeTowers]) if (!meta.towers.includes(i)) deleteTower(i);
+
+  for (const i of activeTowers) {
+    for (const d of ['d1','d2']) {
+      if (!meta.docks[i].includes(d)) deleteDock(d, i);
+      const want = (meta.changeRows[i] || {})[d];
+      const tb = document.getElementById(`${d}-changes-body-${i}`);
+      while (tb && want && tb.querySelectorAll('tr').length < want) addChangeRow(d, i);
+    }
+    const wantSlots = meta.imgSlots[i] || 0;
+    while (document.querySelectorAll(`#image-slots-${i} .image-slot`).length < wantSlots) addImageSlot(i);
+  }
+
+  for (const [name, value] of Object.entries(fields)) {
+    form.querySelectorAll(`[name="${CSS.escape(name)}"]`).forEach(el => {
+      if (el.type === 'checkbox' || el.type === 'radio') el.checked = value.includes(el.value);
+      else el.value = value;
+    });
+  }
+
+  // Images: previews come back from the copy already uploaded to the server
+  form.querySelectorAll('input[name$="_token"]').forEach(tokenInput => {
+    if (!tokenInput.value) return;
+    const slot = tokenInput.closest('.image-slot');
+    const preview = slot.querySelector('.preview');
+    preview.src = `/api/img/${tokenInput.value}`;
+    preview.onerror = () => removeImage(slot.querySelector('.remove-img-btn'));
+    preview.style.display = 'block';
+    slot.querySelector('.placeholder').style.display = 'none';
+    slot.querySelector('.remove-img-btn').style.display = 'inline-block';
+  });
+
+  activateTab(activeTowers[0]);
+  showDraftBar(draft.saved);
+}
+
+function showDraftBar(savedAt) {
+  const bar = document.createElement('div');
+  bar.style.cssText = 'position:sticky;top:0;z-index:9999;background:#0f766e;color:#fff;' +
+    'padding:8px 16px;font-size:0.85rem;display:flex;gap:12px;align-items:center;justify-content:center';
+  bar.innerHTML = `<span>Draft restored — last saved ${new Date(savedAt).toLocaleString()}</span>`;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = 'Start fresh';
+  btn.style.cssText = 'background:#fff;color:#0f766e;border:0;border-radius:6px;padding:4px 10px;font-weight:600';
+  btn.onclick = () => {
+    if (!confirm('Discard the restored draft and start a blank report?')) return;
+    localStorage.removeItem(DRAFT_KEY);
+    location.reload();
+  };
+  bar.appendChild(btn);
+  document.body.insertBefore(bar, document.body.firstChild);
+}
+
+restoreDraft();
 
 // ── Form validation ───────────────────────────────────────────────────────
 
