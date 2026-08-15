@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime
 
 import fitz  # PyMuPDF
+import requests
 
 from flask import Flask, render_template, request, send_file, jsonify
 from docx import Document
@@ -35,6 +36,9 @@ CHECKLIST_ITEMS = [
 ]
 
 OWNERS = ["Building", "Client", "TII", "Vendor", "TBD"]
+
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '').strip()
 
 
 # ── Checkbox formatters ────────────────────────────────────────────────────
@@ -524,6 +528,24 @@ def docx_to_pdf(docx_bytes: bytes) -> bytes:
             return f.read()
 
 
+def send_telegram_document(file_bytes: bytes, filename: str, caption: str = ''):
+    """Send a generated report file to Telegram when bot settings are configured."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+
+    url = f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendDocument'
+    files = {'document': (filename, io.BytesIO(file_bytes))}
+    data = {'chat_id': TELEGRAM_CHAT_ID}
+    if caption:
+        data['caption'] = caption[:1024]
+
+    try:
+        resp = requests.post(url, data=data, files=files, timeout=30)
+        resp.raise_for_status()
+    except Exception as exc:
+        app.logger.warning('Telegram send failed for %s: %s', filename, exc)
+
+
 def _replace_pdf_images_hq(pdf_bytes: bytes, orig_image_list: list) -> bytes:
     if not any(b is not None for b in orig_image_list):
         return pdf_bytes
@@ -709,6 +731,11 @@ def generate():
     save_name      = f"{assessor_slug}_{tower_slug}_{timestamp}.pdf"
     with open(os.path.join(REPORTS_DIR, save_name), 'wb') as f:
         f.write(pdf_bytes)
+
+    docx_name = f"{assessor_slug}_{tower_slug}_{timestamp}.docx"
+    caption = f"Site assessment report\nAssessor: {assessor_name}\nTower(s): {', '.join(t['name'] for t in towers)}"
+    send_telegram_document(docx_bytes, docx_name, caption)
+    send_telegram_document(pdf_bytes, save_name, caption)
 
     # Log submission details
     submitter_ip = request.headers.get('X-Forwarded-For', request.remote_addr or 'unknown')
