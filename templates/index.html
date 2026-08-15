@@ -1515,6 +1515,35 @@ function duplicateTower(sourceIdx) {
     dstMatches.forEach(dst => { dst.checked = src.checked; });
   });
 
+  // Copy images — both towers point at the same uploaded file, which the
+  // server only ever reads, so sharing a token between them is safe.
+  const srcSlots = srcSec.querySelectorAll('.image-slot');
+  while (dstSec.querySelectorAll('.image-slot').length < srcSlots.length) addImageSlot(newId);
+  while (dstSec.querySelectorAll('.image-slot').length > srcSlots.length) {
+    deleteImageSlot(dstSec.querySelector('.image-slot:last-child .delete-slot-btn'), newId);
+  }
+  const dstSlots = dstSec.querySelectorAll('.image-slot');
+  srcSlots.forEach((src, i) => {
+    const dst = dstSlots[i];
+    if (!dst) return;
+    for (const suffix of ['_token', '_data_uri', '_caption']) {
+      const s = src.querySelector(`[name$="${suffix}"]`);
+      const d = dst.querySelector(`[name$="${suffix}"]`);
+      if (s && d) d.value = s.value;
+    }
+    const srcPreview = src.querySelector('.preview');
+    if (!srcPreview || srcPreview.style.display === 'none') return;
+    const dstPreview = dst.querySelector('.preview');
+    dstPreview.src = srcPreview.src;
+    dstPreview.style.display = 'block';
+    dst.querySelector('.placeholder').style.display = 'none';
+    dst.querySelector('.remove-img-btn').style.display = 'inline-block';
+    if (src.dataset.origDataUri) {
+      dst.dataset.origDataUri = src.dataset.origDataUri;
+      dst.querySelector('.edit-img-btn').style.display = 'inline-block';
+    }
+  });
+
   activateTab(newId);
   updateCountLabel();
 }
