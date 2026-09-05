@@ -513,6 +513,20 @@
 
     <div id="towers-container"></div>
 
+    <div style="display:flex;align-items:center;gap:10px;margin:0 0 10px;flex-wrap:wrap;justify-content:center">
+      <div id="server-status-pill"
+           style="display:flex;align-items:center;gap:8px;padding:8px 12px;
+                  border-radius:8px;background:#f1f1f1;color:#555;font-size:0.82rem;">
+        <span id="server-status-dot" style="width:8px;height:8px;border-radius:50%;background:#aaa;display:inline-block"></span>
+        <span id="server-status-text">Checking server…</span>
+      </div>
+      <button type="button" id="wake-server-btn" onclick="wakeServer(true)"
+              style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;
+                     background:#1a1a2e;color:#fff;border:none;font-size:0.82rem;font-weight:600;
+                     cursor:pointer;min-height:36px;">
+        ⚡ Wake Server
+      </button>
+    </div>
     <div class="actions-bar">
       <button type="submit" class="btn btn-primary" data-output="telegram">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
@@ -1863,6 +1877,37 @@ function showProgress(text) {
 }
 function hideProgress() { document.getElementById('gen-progress')?.remove(); }
 
+// A small toast that appears at the top of the screen and fades out on
+// its own — separate from the status pill, for a one-off confirmation
+// like "server just woke up" rather than a persistent state indicator.
+let _toastTimer;
+function showToast(text, kind = 'success') {
+  let el = document.getElementById('toast-msg');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast-msg';
+    el.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%) translateY(-20px);' +
+      'z-index:30000;padding:10px 18px;border-radius:10px;font-size:0.88rem;font-weight:600;' +
+      'color:#fff;box-shadow:0 4px 14px rgba(0,0,0,0.25);opacity:0;transition:opacity 0.25s, transform 0.25s;' +
+      'display:flex;align-items:center;gap:8px;white-space:nowrap';
+    document.body.appendChild(el);
+  }
+  const colors = { success: '#16a34a', error: '#dc2626', info: '#2563eb' };
+  const icons  = { success: '✅', error: '⚠️', info: 'ℹ️' };
+  el.style.background = colors[kind] || colors.info;
+  el.innerHTML = `${icons[kind] || ''} ${text}`;
+
+  clearTimeout(_toastTimer);
+  requestAnimationFrame(() => {
+    el.style.opacity = '1';
+    el.style.transform = 'translateX(-50%) translateY(0)';
+  });
+  _toastTimer = setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(-50%) translateY(-20px)';
+  }, 2800);
+}
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1876,6 +1921,26 @@ document.getElementById('reportForm').addEventListener('submit', async function(
   e.preventDefault();
 
   const mode = document.getElementById('output_mode').value;
+  const formEl = this;
+
+  // Pre-flight: confirm the server is actually awake before submitting.
+  // Skips the wait entirely if the heartbeat already knows it's warm.
+  if (!serverAwake) {
+    showProgress('<div style="font-size:2rem">💤</div>Server was asleep — waking it up…<br>' +
+      '<small>This can take up to a minute on a cold start.</small>');
+    const ok = await wakeServer(false);
+    if (!ok) {
+      showProgress('<div style="font-size:2rem">⚠️</div>Could not reach the server.<br>' +
+        '<small>Check your connection and try again — your draft is saved.</small>');
+      const close = document.createElement('button');
+      close.textContent = 'Close';
+      close.className = 'btn btn-secondary';
+      close.onclick = hideProgress;
+      document.getElementById('gen-progress').appendChild(close);
+      return;
+    }
+  }
+
   const started = Date.now();
   const tick = setInterval(() => {
     const s = Math.round((Date.now() - started) / 1000);
@@ -1884,7 +1949,7 @@ document.getElementById('reportForm').addEventListener('submit', async function(
   }, 500);
 
   try {
-    const res = await fetch('/generate', { method: 'POST', body: new FormData(this) });
+    const res = await fetch('/generate', { method: 'POST', body: new FormData(formEl) });
     if (!res.ok) throw new Error(`server returned ${res.status}`);
     clearInterval(tick);
     if (mode === 'local') {
@@ -1939,6 +2004,94 @@ async function saveTowerImages(towerIdx, btn) {
     btn.disabled = false; btn.innerText = label;
   }
 }
+</script>
+<script>
+  // ── Server wake / status system ──────────────────────────────────────
+  // Render's free tier sleeps the dyno after ~15 min idle; waking it back
+  // up takes 30-60+s, and a mobile connection sitting idle that long often
+  // gets killed before the server ever responds ("Load failed"). Three
+  // layers handle this:
+  //   1. Passive heartbeat — ping every 4 min while the tab is visible,
+  //      so it never has the chance to fall asleep during a normal fill.
+  //   2. Visible status pill — tap it any time to force-check / wake it,
+  //      so you're never guessing whether it's ready.
+  //   3. Automatic pre-flight wake — Generate always confirms the server
+  //      is awake (retrying up to ~70s) before submitting, so forgetting
+  //      to check no longer means a failed generation.
+
+  let serverAwake = false;
+
+  function setStatusPill(state, text) {
+    const dot  = document.getElementById('server-status-dot');
+    const txt  = document.getElementById('server-status-text');
+    const map  = { awake: '#22c55e', asleep: '#ef4444', checking: '#f59e0b' };
+    dot.style.background = map[state] || '#aaa';
+    txt.textContent = text;
+  }
+
+  // Pings '/' once. Resolves true/false — never throws.
+  async function pingServer(timeoutMs = 8000) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch('/', { method: 'GET', cache: 'no-store', signal: ctrl.signal });
+      return res.ok;
+    } catch (e) {
+      return false;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  // Wakes the server, retrying with backoff for up to ~70s. Updates the
+  // status pill throughout. `manual` = true when the user tapped the pill
+  // themselves (shows a slightly different message).
+  let _waking = false;
+  async function wakeServer(manual = false) {
+    if (_waking) return serverAwake;
+    _waking = true;
+    const wasAwake = serverAwake;
+    const btn = document.getElementById('wake-server-btn');
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+    setStatusPill('checking', manual ? 'Waking server…' : 'Checking server…');
+
+    const deadline = Date.now() + 70000;
+    let delay = 2000;
+    while (Date.now() < deadline) {
+      if (await pingServer()) {
+        serverAwake = true;
+        setStatusPill('awake', 'Server ready');
+        // Only pop the toast when this actually changed something —
+        // a manual tap that finds it already awake, or a fresh wake
+        // from asleep — not on every silent heartbeat pass.
+        if (manual || !wasAwake) showToast('Server ready', 'success');
+        _waking = false;
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+        return true;
+      }
+      setStatusPill('checking', `Waking server… (cold start can take a minute)`);
+      await new Promise(r => setTimeout(r, delay));
+      delay = Math.min(delay * 1.5, 8000);
+    }
+    serverAwake = false;
+    setStatusPill('asleep', 'Server unreachable — tap to retry');
+    if (manual) showToast('Could not reach the server', 'error');
+    _waking = false;
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    return false;
+  }
+
+  // Passive heartbeat: keeps it warm while you're actively looking at the page.
+  setInterval(() => {
+    if (document.hidden) return;
+    pingServer().then(ok => {
+      serverAwake = ok;
+      if (!_waking) setStatusPill(ok ? 'awake' : 'asleep', ok ? 'Server ready' : 'Server asleep — tap to wake');
+    });
+  }, 4 * 60 * 1000);
+
+  // Initial check on page load.
+  window.addEventListener('load', () => wakeServer(false));
 </script>
 <script>
   if ('serviceWorker' in navigator) {
