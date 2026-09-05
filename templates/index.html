@@ -801,12 +801,43 @@ function makeImageSlot(towerIdx, imgIdx) {
 
 // ── Image helpers ─────────────────────────────────────────────────────────
 
+// Resizes and re-compresses an image data URL before it's ever attached to
+// the form. iPhone photos can run 3-8MB apiece at full resolution; once
+// base64-encoded for upload that grows ~33% larger, and a handful of those
+// blows straight through Render's request-size ceiling (413 Payload Too
+// Large) before your Flask app even sees the request. Capping the longest
+// side and re-encoding as JPEG keeps quality more than good enough for a
+// printed report while cutting typical file size by 80-95%.
+function resizeImageDataUrl(dataUrl, maxDim = 1600, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        if (width >= height) { height = Math.round(height * maxDim / width); width = maxDim; }
+        else { width = Math.round(width * maxDim / height); height = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
 function handleImageSelect(input, event) {
   if (!input.files || !input.files[0]) return;
   const slot = input.closest('.image-slot');
   const reader = new FileReader();
-  reader.onload = e => {
-    const dataUrl = e.target.result;
+  reader.onload = async e => {
+    let dataUrl = e.target.result;
+    try {
+      dataUrl = await resizeImageDataUrl(dataUrl);
+    } catch (err) {
+      console.warn('image resize failed, using original', err);
+    }
     slot.dataset.origDataUri = dataUrl;
     if (event && event.isTrusted) {
       // User-initiated upload: open annotation editor
