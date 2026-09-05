@@ -526,9 +526,18 @@
                      cursor:pointer;min-height:36px;">
         ⚡ Wake Server
       </button>
+      <button type="button" id="refresh-page-btn" onclick="refreshPageKeepingValues()"
+              style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;
+                     background:#374151;color:#fff;border:none;font-size:0.82rem;font-weight:600;
+                     cursor:pointer;min-height:36px;">
+        🔄 Refresh Page
+      </button>
+    </div>
+    <div style="text-align:center;font-size:0.68rem;color:#999;margin:-4px 0 6px;">
+      If buttons stop responding after leaving the page idle, tap Refresh Page — your entries are kept.
     </div>
     <div style="text-align:center;font-size:0.68rem;color:#bbb;margin-bottom:6px;">
-      build v2026-09-05-e
+      build v2026-09-05-f
     </div>
     <div class="actions-bar">
       <button type="submit" class="btn btn-primary" data-output="telegram">
@@ -1721,6 +1730,18 @@ function writeDraft() {
     localStorage.setItem(DRAFT_KEY, json);
   } catch (e) { console.warn('draft save failed', e); }
 }
+
+// iOS Safari sometimes leaves a long-idle tab's touch handling unresponsive
+// (tap targets stop firing) until something forces it to fully re-render.
+// A plain reload fixes that — and since the draft autosave already keeps a
+// running copy of every field (including photos) in localStorage, this
+// reload brings all of it straight back via the normal restoreDraft() call
+// that already runs on page load. Unlike "Start fresh," nothing is cleared.
+function refreshPageKeepingValues() {
+  writeDraft();          // force the very latest state to save, even mid-debounce
+  location.reload();
+}
+
 function saveDraft() {
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(writeDraft, 600);
