@@ -527,6 +527,9 @@
         ⚡ Wake Server
       </button>
     </div>
+    <div style="text-align:center;font-size:0.68rem;color:#bbb;margin-bottom:6px;">
+      build v2026-09-05-e
+    </div>
     <div class="actions-bar">
       <button type="submit" class="btn btn-primary" data-output="telegram">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
@@ -1787,6 +1790,12 @@ function showDraftBar(savedAt) {
   btn.onclick = () => {
     if (!confirm('Discard the restored draft and start a blank report?')) return;
     localStorage.removeItem(DRAFT_KEY);
+    // Safari/WebKit remembers what you typed into a form and silently
+    // re-fills it on a plain reload, independent of our own draft system.
+    // Resetting every field to blank *before* reloading means that's the
+    // state WebKit snapshots and restores — i.e. nothing left to bring back.
+    form.reset();
+    form.querySelectorAll('input[type="hidden"]').forEach(el => el.value = '');
     location.reload();
   };
   bar.appendChild(btn);
