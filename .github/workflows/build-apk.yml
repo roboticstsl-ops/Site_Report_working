@@ -52,6 +52,7 @@ jobs:
         run: |
           mkdir -p /tmp/wrapper-scratch
           cd /tmp/wrapper-scratch
+          touch settings.gradle
           gradle wrapper --gradle-version 8.7
           cp -r gradle gradlew gradlew.bat "$GITHUB_WORKSPACE/android/"
 
