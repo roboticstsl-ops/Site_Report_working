@@ -10,8 +10,14 @@ import uuid
 import zipfile
 from datetime import datetime
 
-import fitz  # PyMuPDF
 import requests
+
+# The Android build has no LibreOffice (can't run it on-device) and no
+# PyMuPDF wheel for Chaquopy, so it sets OFFLINE_NO_PDF=1 and the app skips
+# straight to docx-only output -- fitz is only imported when actually needed.
+OFFLINE_NO_PDF = os.environ.get('OFFLINE_NO_PDF', '') == '1'
+if not OFFLINE_NO_PDF:
+    import fitz  # PyMuPDF
 
 from flask import Flask, render_template, request, send_file, jsonify
 from docx import Document
@@ -836,8 +842,11 @@ def generate():
     doc.save(buf)
     docx_bytes = buf.getvalue()
 
-    pdf_bytes = docx_to_pdf(docx_bytes)
-    pdf_bytes = _replace_pdf_images_hq(pdf_bytes, orig_images)
+    if OFFLINE_NO_PDF:
+        pdf_bytes = None
+    else:
+        pdf_bytes = docx_to_pdf(docx_bytes)
+        pdf_bytes = _replace_pdf_images_hq(pdf_bytes, orig_images)
 
     # Save a copy on the server
     timestamp      = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -850,16 +859,22 @@ def generate():
     docx_name = f"{assessor_slug}_{tower_slug}_{timestamp}.docx"
     caption = f"Site assessment report\nAssessor: {assessor_name}\nTower(s): {', '.join(t['name'] for t in towers)}"
 
-    # 'local' hands both files straight back to the device and touches nothing else.
+    out_files = {docx_name: docx_bytes}
+    if pdf_bytes is not None:
+        out_files[save_name] = pdf_bytes
+
+    # 'local' hands the file(s) straight back to the device and touches nothing else.
     if form.get('output') == 'local':
-        return _zip_response({docx_name: docx_bytes, save_name: pdf_bytes},
-                             f"{assessor_slug}_{tower_slug}_{timestamp}.zip")
+        return _zip_response(out_files, f"{assessor_slug}_{tower_slug}_{timestamp}.zip")
 
     sent_docx = send_telegram_document(docx_bytes, docx_name, caption)
-    sent_pdf  = send_telegram_document(pdf_bytes, save_name, caption)
+    sent_pdf  = send_telegram_document(pdf_bytes, save_name, caption) if pdf_bytes is not None else True
 
     # Telegram is the archive. Only keep a copy on the server if it did not get there.
-    for ok, name, blob in ((sent_docx, docx_name, docx_bytes), (sent_pdf, save_name, pdf_bytes)):
+    to_check = [(sent_docx, docx_name, docx_bytes)]
+    if pdf_bytes is not None:
+        to_check.append((sent_pdf, save_name, pdf_bytes))
+    for ok, name, blob in to_check:
         if not ok:
             with open(os.path.join(REPORTS_DIR, name), 'wb') as f:
                 f.write(blob)
@@ -878,7 +893,9 @@ def generate():
     # Telegram already has both files, so the browser only needs the verdict —
     # streaming a several-MB PDF back over a phone connection is what made long
     # generations look like a dropped connection.
-    return jsonify({'sent': sent_docx and sent_pdf, 'pdf': save_name, 'docx': docx_name})
+    return jsonify({'sent': sent_docx and sent_pdf,
+                     'pdf': save_name if pdf_bytes is not None else None,
+                     'docx': docx_name})
 
 
 if __name__ == '__main__':

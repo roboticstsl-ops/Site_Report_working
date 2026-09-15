@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Where the camera-capture temp file (for the web form's photo inputs)
+     is allowed to live, exposed to the camera app via FileProvider. -->
+<paths>
+    <cache-path name="camera_captures" path="camera/" />
+</paths>
