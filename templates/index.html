@@ -960,9 +960,9 @@ function addImageSlot(towerIdx) {
 // One tap: opens the camera directly (a fresh <input capture> with no other
 // listeners, so MainActivity.onShowFileChooser skips straight past the
 // gallery chooser -- see android/.../MainActivity.kt), then drops the photo
-// into this tower's first open Site Images slot, captioned with `label`.
-// Skips the annotation editor on purpose: the point of this button is one
-// tap and done, not a detour through manual editing every time.
+// into this tower's first open Site Images slot -- caption pre-filled with
+// `label`, annotation editor opened, exactly like a normal Site Images
+// upload (see handleImageSelect) so it can be marked up the same way.
 function takeImageFor(towerIdx, label) {
   const input = document.createElement('input');
   input.type = 'file';
@@ -998,17 +998,14 @@ async function assignImageToNextSlot(towerIdx, file, label) {
   }
 
   slot.dataset.origDataUri = dataUrl;
-  const uriInput = slot.querySelector('input[name$="_data_uri"]');
-  if (uriInput) uriInput.value = dataUrl;
-  slot.querySelector('.preview').src = dataUrl;
-  slot.querySelector('.preview').style.display = 'block';
-  slot.querySelector('.placeholder').style.display = 'none';
-  slot.querySelector('.remove-img-btn').style.display = 'inline-block';
-  slot.querySelector('.edit-img-btn').style.display = 'inline-block';
   const captionInput = slot.querySelector('input[name$="_caption"]');
   if (captionInput && !captionInput.value.trim()) captionInput.value = label;
 
-  _uploadImage(slot, dataUrl);
+  // Same path a normal Site Images upload takes: opens the annotation
+  // editor, and editorDone() (on "Done ✓") is what actually stores the
+  // final image and calls _uploadImage -- so annotate-or-not, Edit /
+  // Annotate afterward works exactly the same as any other photo.
+  openImageEditor(slot, dataUrl);
   showToast(`Photo added as "${label}"`, 'success');
 }
 
