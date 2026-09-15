@@ -71,7 +71,7 @@ jobs:
         id: version
         working-directory: android
         run: |
-          VERSION=$(grep -m1 'versionName' app/build.gradle | sed -E 's/.*versionName "([^"]+)".*/\1/')
+          VERSION=$(grep -m1 -E 'versionName\s+"' app/build.gradle | sed -E 's/.*versionName[[:space:]]+"([^"]+)".*/\1/')
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           NAME="SiteReport-v${VERSION}.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/debug/$NAME"
