@@ -49,6 +49,16 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    sourceSets {
+        main {
+            // src/main/python is Gradle-managed (mirrored from the repo root
+            // by syncPythonSource, wiped and rewritten every build);
+            // android_entry.py lives in python_native instead so sync never
+            // deletes it.
+            python.srcDirs = ["src/main/python", "src/main/python_native"]
+        }
+    }
 }
 
 // Single source of truth stays at the repo root (app.py, templates/, static/,
@@ -88,14 +98,6 @@ chaquopy {
             install "python-docx"
             install "requests"
             install "pillow"
-        }
-    }
-    sourceSets {
-        main {
-            // src/main/python is Gradle-managed (mirrored from the repo root
-            // by syncPythonSource, wiped and rewritten every build); android_entry.py
-            // lives in python_native instead so that sync never deletes it.
-            python.srcDirs = ["src/main/python", "src/main/python_native"]
         }
     }
 }
