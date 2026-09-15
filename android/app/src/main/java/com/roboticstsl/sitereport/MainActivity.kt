@@ -7,7 +7,10 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.provider.OpenableColumns
+import android.util.Base64
 import android.util.Log
+import android.webkit.JavascriptInterface
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -20,6 +23,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.FileProvider
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import org.json.JSONObject
 import java.io.File
 
 /**
@@ -60,6 +64,64 @@ class MainActivity : AppCompatActivity() {
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* if denied, the chooser below still offers the gallery */ }
+
+    // "Save to Device" -- the web page hands us a base64 payload + suggested
+    // filename via AndroidBridge.saveFile(); this launches Android's real
+    // "choose where to save" picker (Storage Access Framework) and writes
+    // the bytes to whatever the user picked, then reports the result back
+    // into the page via window.onAndroidSaveResult(ok, displayName).
+    private var pendingSaveBytes: ByteArray? = null
+    private val createDocumentLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("*/*")
+    ) { uri: Uri? ->
+        val bytes = pendingSaveBytes
+        pendingSaveBytes = null
+        if (uri == null || bytes == null) {
+            notifySaveResult(false, null)
+            return@registerForActivityResult
+        }
+        try {
+            contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: throw java.io.IOException("no output stream")
+            notifySaveResult(true, queryDisplayName(uri))
+        } catch (e: Exception) {
+            Log.e("SiteReport", "save to device failed", e)
+            notifySaveResult(false, null)
+        }
+    }
+
+    private fun notifySaveResult(ok: Boolean, displayName: String?) {
+        val nameJs = if (displayName != null) JSONObject.quote(displayName) else "null"
+        webView.post {
+            webView.evaluateJavascript(
+                "window.onAndroidSaveResult && window.onAndroidSaveResult($ok, $nameJs)", null
+            )
+        }
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        return try {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    inner class AndroidBridge {
+        @JavascriptInterface
+        fun saveFile(base64Data: String, filename: String, @Suppress("UNUSED_PARAMETER") mimeType: String) {
+            val bytes = try {
+                Base64.decode(base64Data, Base64.DEFAULT)
+            } catch (e: Exception) {
+                Log.e("SiteReport", "bad base64 from web page", e)
+                notifySaveResult(false, null)
+                return
+            }
+            pendingSaveBytes = bytes
+            runOnUiThread { createDocumentLauncher.launch(filename) }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -114,6 +176,7 @@ class MainActivity : AppCompatActivity() {
         webView.settings.domStorageEnabled = true
         webView.settings.allowFileAccess = true
         webView.settings.mediaPlaybackRequiresUserGesture = false
+        webView.addJavascriptInterface(AndroidBridge(), "AndroidBridge")
 
         webView.webViewClient = object : WebViewClient() {
             override fun onReceivedError(
@@ -146,9 +209,8 @@ class MainActivity : AppCompatActivity() {
                 pendingFileCallback = filePathCallback
 
                 val captureEnabled = fileChooserParams?.isCaptureEnabled == true
-                val intents = mutableListOf<android.content.Intent>()
 
-                if (captureEnabled || fileChooserParams?.mode == FileChooserParams.MODE_OPEN) {
+                fun buildCameraIntent(): android.content.Intent? {
                     val photoFile = File(
                         File(cacheDir, "camera").apply { mkdirs() },
                         "capture_${System.currentTimeMillis()}.jpg"
@@ -157,13 +219,30 @@ class MainActivity : AppCompatActivity() {
                         this@MainActivity, "$packageName.fileprovider", photoFile
                     )
                     pendingCameraUri = photoUri
-                    val cameraIntent = android.content.Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                    val intent = android.content.Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
                         putExtra(MediaStore.EXTRA_OUTPUT, photoUri)
                         addFlags(android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                     }
-                    if (cameraIntent.resolveActivity(packageManager) != null) {
-                        intents.add(cameraIntent)
+                    return if (intent.resolveActivity(packageManager) != null) intent else null
+                }
+
+                // The "Take Image" quick-capture buttons use <input capture>,
+                // which is exactly the signal that the page wants the camera
+                // and nothing else -- skip the gallery-vs-camera chooser
+                // dialog entirely and jump straight to the camera app.
+                if (captureEnabled) {
+                    val cameraIntent = buildCameraIntent()
+                    if (cameraIntent != null) {
+                        filePickerLauncher.launch(cameraIntent)
+                        return true
                     }
+                    // No camera app available -- fall through to the normal
+                    // gallery chooser below rather than doing nothing.
+                }
+
+                val intents = mutableListOf<android.content.Intent>()
+                if (fileChooserParams?.mode == FileChooserParams.MODE_OPEN) {
+                    buildCameraIntent()?.let { intents.add(it) }
                 }
 
                 val galleryIntent = android.content.Intent(android.content.Intent.ACTION_GET_CONTENT).apply {

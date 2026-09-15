@@ -16,8 +16,8 @@ android {
         // needs it monotonically increasing), versionName is the human
         // x.y.z shown to the user and baked into the downloadable APK's
         // filename by the CI workflow.
-        versionCode 2
-        versionName "0.0.1"
+        versionCode 3
+        versionName "0.0.2"
 
         ndk {
             // arm64-v8a covers virtually every real phone from the last ~7 years;
