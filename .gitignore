@@ -9,3 +9,12 @@ reports/
 .env
 *.log
 .~lock.*
+
+# Android build (see android/README.md) -- generated/downloaded, not source
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/src/main/python/
+android/*.apk
+android/app/*.apk

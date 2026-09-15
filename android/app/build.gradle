@@ -1,0 +1,101 @@
+plugins {
+    id "com.android.application"
+    id "com.chaquo.python"
+    id "org.jetbrains.kotlin.android"
+}
+
+android {
+    namespace "com.roboticstsl.sitereport"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.roboticstsl.sitereport"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+
+        ndk {
+            // arm64-v8a covers virtually every real phone from the last ~7 years;
+            // x86_64 covers the emulator. Dropping armeabi-v7a/x86 keeps the APK
+            // and CI build time down for a sideload-only app.
+            abiFilters "arm64-v8a", "x86_64"
+        }
+
+        // Baked in at build time from GitHub Actions secrets -- never committed
+        // in plaintext. Empty string if not supplied (Telegram send just fails
+        // gracefully at runtime, everything else still works).
+        buildConfigField "String", "TELEGRAM_BOT_TOKEN", "\"${System.getenv('TELEGRAM_BOT_TOKEN') ?: ''}\""
+        buildConfigField "String", "TELEGRAM_CHAT_ID", "\"${System.getenv('TELEGRAM_CHAT_ID') ?: ''}\""
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    buildTypes {
+        debug {
+            // Sideload-only per the user's own choice -- no Play Store signing
+            // needed. debug builds are self-signed by the Android debug
+            // keystore automatically, installable via "unknown sources".
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+// Single source of truth stays at the repo root (app.py, templates/, static/,
+// WorkingTemplate.docx) -- this task mirrors just those into Chaquopy's
+// source tree before every build instead of duplicating them by hand.
+def repoRoot = file("../..")
+def pySrc = file("src/main/python")
+
+tasks.register("syncPythonSource", Sync) {
+    from(repoRoot) {
+        include "app.py"
+    }
+    from(repoRoot) {
+        include "templates/**"
+    }
+    from(repoRoot) {
+        include "static/**"
+    }
+    from(repoRoot) {
+        include "WorkingTemplate.docx"
+    }
+    into pySrc
+}
+preBuild.dependsOn syncPythonSource
+
+dependencies {
+    implementation "androidx.appcompat:appcompat:1.7.0"
+    implementation "androidx.core:core-ktx:1.13.1"
+    implementation "androidx.webkit:webkit:1.11.0"
+}
+
+chaquopy {
+    defaultConfig {
+        version "3.10"
+        pip {
+            install "flask"
+            install "python-docx"
+            install "requests"
+            install "pillow"
+        }
+    }
+    sourceSets {
+        main {
+            // src/main/python is Gradle-managed (mirrored from the repo root
+            // by syncPythonSource, wiped and rewritten every build); android_entry.py
+            // lives in python_native instead so that sync never deletes it.
+            python.srcDirs = ["src/main/python", "src/main/python_native"]
+        }
+    }
+}
