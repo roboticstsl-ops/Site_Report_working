@@ -44,8 +44,20 @@ jobs:
           restore-keys: gradle-
 
       - name: Generate Gradle wrapper
+        # The runner's system `gradle` (9.x) evaluates build.gradle before
+        # running ANY task, including `wrapper` itself -- and AGP 8.5.2 isn't
+        # compatible with Gradle 9. Generate the wrapper in an empty scratch
+        # dir instead, so nothing of ours gets evaluated under the wrong
+        # engine, then drop it into the real project.
+        run: |
+          mkdir -p /tmp/wrapper-scratch
+          cd /tmp/wrapper-scratch
+          gradle wrapper --gradle-version 8.7
+          cp -r gradle gradlew gradlew.bat "$GITHUB_WORKSPACE/android/"
+
+      - name: Verify wrapper
         working-directory: android
-        run: gradle wrapper --gradle-version 8.7
+        run: ./gradlew --version
 
       - name: Build debug APK
         working-directory: android
