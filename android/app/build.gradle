@@ -83,6 +83,12 @@ tasks.register("syncPythonSource", Sync) {
     into pySrc
 }
 preBuild.dependsOn syncPythonSource
+// Chaquopy's own per-variant merge task (mergeDebugPythonSources etc.) reads
+// this same directory; Gradle's task-validation wants an explicit
+// dependency on top of preBuild, not just build-order luck.
+tasks.matching { it.name.matches(/merge.*PythonSources/) }.configureEach {
+    dependsOn syncPythonSource
+}
 
 dependencies {
     implementation "androidx.appcompat:appcompat:1.7.0"
