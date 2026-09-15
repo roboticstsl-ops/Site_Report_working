@@ -31,8 +31,18 @@ app.config['MAX_CONTENT_LENGTH'] = 300 * 1024 * 1024  # 300 MB
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'WorkingTemplate.docx')
 REPORTS_DIR   = os.path.join(os.path.dirname(__file__), 'reports')
-UPLOADS_DIR   = '/tmp/report_img_uploads'
-os.makedirs(REPORTS_DIR, exist_ok=True)
+# tempfile.gettempdir() honors $TMPDIR and resolves to '/tmp' when that's
+# unset -- identical to the old hardcoded path on the server, but portable.
+# The hardcoded '/tmp/...' crashed the Android build outright: apps can't
+# write to /tmp there, and this makedirs ran at import time, unhandled.
+UPLOADS_DIR   = os.path.join(tempfile.gettempdir(), 'report_img_uploads')
+try:
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+except OSError:
+    # Same belt-and-suspenders as UPLOADS_DIR: falls back to a directory
+    # that's always writable rather than crashing app startup over it.
+    REPORTS_DIR = os.path.join(tempfile.gettempdir(), 'report_reports')
+    os.makedirs(REPORTS_DIR, exist_ok=True)
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 CHECKLIST_ITEMS = [

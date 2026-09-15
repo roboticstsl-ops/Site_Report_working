@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.util.Log
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -63,19 +64,40 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (!Python.isStarted()) {
-            Python.start(AndroidPlatform(this))
+        webView = WebView(this)
+        setContentView(webView)
+        setupWebView()
+
+        try {
+            if (!Python.isStarted()) {
+                Python.start(AndroidPlatform(this))
+            }
+            val python = Python.getInstance()
+            val environ = python.getModule("os").get("environ")!!
+            // app.py's own temp/report dirs default to '/tmp', which isn't
+            // writable on Android -- point tempfile.gettempdir() at the
+            // app's actual writable cache dir instead. See app.py.
+            environ.callAttr("__setitem__", "TMPDIR", cacheDir.absolutePath)
+            // Same app.py as the server deployment; this flag only skips the
+            // LibreOffice PDF step (unavailable on Android) -- see app.py.
+            environ.callAttr("__setitem__", "OFFLINE_NO_PDF", "1")
+            environ.callAttr("__setitem__", "TELEGRAM_BOT_TOKEN", BuildConfig.TELEGRAM_BOT_TOKEN)
+            environ.callAttr("__setitem__", "TELEGRAM_CHAT_ID", BuildConfig.TELEGRAM_CHAT_ID)
+            // Importing this starts the embedded Flask server (module-level
+            // code runs once per process; safe to call again on Activity
+            // recreation).
+            python.getModule("android_entry")
+        } catch (t: Throwable) {
+            // Show the real error instead of a silent crash -- there's no
+            // device/emulator in the build pipeline to catch this earlier.
+            Log.e("SiteReport", "Python/Flask startup failed", t)
+            webView.loadData(
+                "<pre style=\"white-space:pre-wrap;font-family:monospace;padding:16px\">" +
+                    "Startup failed:\n${Log.getStackTraceString(t).replace("<", "&lt;")}</pre>",
+                "text/html", "UTF-8"
+            )
+            return
         }
-        val python = Python.getInstance()
-        val environ = python.getModule("os").get("environ")!!
-        // Same app.py as the server deployment; this flag only skips the
-        // LibreOffice PDF step (unavailable on Android) -- see app.py.
-        environ.callAttr("__setitem__", "OFFLINE_NO_PDF", "1")
-        environ.callAttr("__setitem__", "TELEGRAM_BOT_TOKEN", BuildConfig.TELEGRAM_BOT_TOKEN)
-        environ.callAttr("__setitem__", "TELEGRAM_CHAT_ID", BuildConfig.TELEGRAM_CHAT_ID)
-        // Importing this starts the embedded Flask server (module-level code
-        // runs once per process; safe to call again on Activity recreation).
-        python.getModule("android_entry")
 
         if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
@@ -83,9 +105,6 @@ class MainActivity : AppCompatActivity() {
             cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
         }
 
-        webView = WebView(this)
-        setContentView(webView)
-        setupWebView()
         loadAppWithRetry()
     }
 

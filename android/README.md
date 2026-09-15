@@ -34,10 +34,15 @@ locally instead of a PDF. Nothing else about `app.py` changed.
 
 CI (`.github/workflows/build-apk.yml`) builds this on every push to `main`
 that touches the app or `android/`, or on demand from the Actions tab —
-download the APK from that run's **Artifacts**. It's a debug build
+download the APK from that run's **Artifacts** (named e.g.
+`SiteReport-v0.0.1`, containing `SiteReport-v0.0.1.apk`). It's a debug build
 (self-signed by the Android debug keystore), meant for direct sideload:
 enable "install unknown apps" for your file manager / browser, open the
 downloaded APK, install.
+
+**Before each release**, bump `versionName` (and `versionCode` by 1) in
+`app/build.gradle` — that's what names the downloadable file. Started at
+`0.0.1`; go `0.0.2`, `0.0.3`, etc. for each following update.
 
 To build locally instead: `cd android && ./gradlew :app:assembleDebug`
 (needs Android SDK + `ANDROID_HOME` set; run `gradle wrapper` first if
